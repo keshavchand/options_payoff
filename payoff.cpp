@@ -73,15 +73,6 @@ int DrawPixelsOnScreen(HDC hdc, int screen_width, int screen_height){
 int Running = 1;
 int offset = 0;
 LRESULT WindowProc(HWND window_handle, UINT message, WPARAM wParam, LPARAM lParam){
-  GenerateTestScreen((unsigned int *) &PIXELS, offset++);
-  HDC hdc = GetDC(window_handle);
-  {
-    RECT rect;
-    GetClientRect(window_handle, &rect);
-    int i = DrawPixelsOnScreen(hdc, rect.right - rect.left, rect.bottom - rect.top);
-    //printf("asdf %d \n", i == GDI_ERROR);
-  }
-  ReleaseDC(window_handle, hdc);
   LRESULT result = 0;
   switch (message){
     case WM_CLOSE: {
@@ -89,14 +80,24 @@ LRESULT WindowProc(HWND window_handle, UINT message, WPARAM wParam, LPARAM lPara
     } break;
     case WM_PAINT: {
        PAINTSTRUCT ps;
-       GenerateTestScreen((unsigned int *) &PIXELS, 0);
+       GenerateTestScreen((unsigned int *) &PIXELS, offset++);
        HDC hdc = BeginPaint(window_handle, &ps);
-       RECT rect;
-       GetClientRect(window_handle, &rect);
-       DrawPixelsOnScreen(hdc, rect.right - rect.left, rect.bottom - rect.top);
+       {
+         RECT rect;
+         GetClientRect(window_handle, &rect);
+         DrawPixelsOnScreen(hdc, rect.right - rect.left, rect.bottom - rect.top);
+       }
        EndPaint(window_handle, &ps);
     } break;
     default: {
+      GenerateTestScreen((unsigned int *) &PIXELS, offset++);
+      HDC hdc = GetDC(window_handle);
+      {
+        RECT rect;
+        GetClientRect(window_handle, &rect);
+        DrawPixelsOnScreen(hdc, rect.right - rect.left, rect.bottom - rect.top);
+      }
+      ReleaseDC(window_handle, hdc);
       result = DefWindowProc(window_handle, message, wParam, lParam);
     } break;
   }
@@ -160,4 +161,4 @@ int main(){
       }
     }
   }
-};
+}
