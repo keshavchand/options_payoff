@@ -38,8 +38,9 @@ unsigned int OptionIntrinsicValue(Option o, unsigned int current_price){
 
 #define WIDTH 800
 #define HEIGHT 600
+// Pixels start at (0,0) at top and go to (Height, width) at lowest
 unsigned int PIXELS [WIDTH * HEIGHT];
-static BITMAPINFO bmi;
+
 
 void GenerateTestScreen(unsigned int * pixels, int offset){
   for( int i = 0; i < WIDTH; i++){
@@ -48,9 +49,80 @@ void GenerateTestScreen(unsigned int * pixels, int offset){
       pixels[i * HEIGHT + j] += (offset & 0xff) << 8;
     }
   }
+
+}
+
+static void DrawStraightLineAlongY(unsigned int *pixels, int point_x , int point_y1, int point_y2,unsigned int color){
+  if ( point_y1 > point_y2){
+    int temp = point_y2;
+    point_y2 = point_y1;
+    point_y1 = temp;
+  }
+
+  for(int y = point_y1 ; y < point_y2; y++){
+     pixels[y * WIDTH + point_x] = color;
+  }
+}
+
+static void DrawStraightLineAlongX(unsigned int *pixels, int point_y , int point_x1, int point_x2,unsigned int color){
+  if ( point_x1 > point_x2){
+    int temp = point_x2;
+    point_x2 = point_x1;
+    point_x1 = temp;
+  }
+
+  for(int x = point_x1 ; x <  point_x2 ; x++){
+     pixels[point_y * WIDTH + x] = color;
+  }
+}
+
+void DrawLine(unsigned int *pixels, int point_x1, int point_y1, int point_x2, int point_y2, unsigned int foreground_color){
+  if ( point_x1 == point_x2){
+    DrawStraightLineAlongX(pixels, point_x1, point_y1, point_y2, foreground_color);
+    return;
+  }
+  if ( point_y1 == point_y2){
+    DrawStraightLineAlongY(pixels, point_y1, point_x1, point_x2, foreground_color);
+    return;
+  }
+
+  if (point_x1 > point_x2){
+    int temp = point_x2;
+    point_x2 = point_x1;
+    point_x1 = temp;
+    
+    temp = point_y2;
+    point_y2 = point_y1;
+    point_y1 = temp;
+  }
+
+  //y = Mx + c
+  //M = slope
+  //c = y intersect
+  float first_pixel_center_x = (float)point_x1 + 0.5f;
+  float first_pixel_center_y = (float)point_y1 + 0.5f;
+
+  float second_pixel_center_x = (float)point_x2 + 0.5f;
+  float second_pixel_center_y = (float)point_y2 + 0.5f;
+
+  float slope = 
+    (second_pixel_center_y - first_pixel_center_y)/(second_pixel_center_x - first_pixel_center_x);
+  float y_intersect = first_pixel_center_y - (slope * first_pixel_center_x);
+  
+  for(int x = point_x1; x < point_x2; x++){
+    float x_pos = (float)x + 0.5f;
+    float y_pos = (slope * x_pos) + y_intersect;
+    
+    int y = (int) (y_pos);
+
+    pixels[y * WIDTH + x] = foreground_color;
+  }
+  
+ return; 
 }
  
-int DrawPixelsOnScreen(HDC hdc, int screen_width, int screen_height){
+static BITMAPINFO bmi;
+int DrawOnScreen(HDC hdc, int screen_width, int screen_height){
   if(bmi.bmiHeader.biSize == 0){
     bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
     bmi.bmiHeader.biWidth = WIDTH;
@@ -85,9 +157,14 @@ LRESULT WindowProc(HWND window_handle, UINT message, WPARAM wParam, LPARAM lPara
        {
          RECT rect;
          GetClientRect(window_handle, &rect);
-         DrawPixelsOnScreen(hdc, rect.right - rect.left, rect.bottom - rect.top);
+         DrawOnScreen(hdc, rect.right - rect.left, rect.bottom - rect.top);
        }
        EndPaint(window_handle, &ps);
+    } break;
+    case WM_KEYDOWN:{
+      if ( wParam == 'Q'){
+        Running = 0;
+      }
     } break;
     default: {
       result = DefWindowProc(window_handle, message, wParam, lParam);
@@ -142,12 +219,15 @@ int main(){
           continue;
         }
          GenerateTestScreen((unsigned int *) &PIXELS, offset++);
+         DrawLine((unsigned int*) PIXELS, 1, 1, 100, 100, 0xffeeff);
+         DrawLine((unsigned int*) PIXELS, 100, 1, 200, 100, 0xffeeff);
+         DrawLine((unsigned int*) PIXELS, 100, 50, 200, 100, 0xffeeff);
+         DrawLine((unsigned int*) PIXELS, 100, 1, 100, 100, 0xffeeff);
          HDC hdc = GetDC(window);
          {
            RECT rect;
            GetClientRect(window, &rect);
-           int i = DrawPixelsOnScreen(hdc, rect.right - rect.left, rect.bottom - rect.top);
-           //printf("asdf %d \n", i == GDI_ERROR);
+           DrawOnScreen(hdc, rect.right - rect.left, rect.bottom - rect.top);
          }
          ReleaseDC(window, hdc);
         ShowWindow(window, SW_SHOW);
