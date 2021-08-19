@@ -90,14 +90,6 @@ LRESULT WindowProc(HWND window_handle, UINT message, WPARAM wParam, LPARAM lPara
        EndPaint(window_handle, &ps);
     } break;
     default: {
-      GenerateTestScreen((unsigned int *) &PIXELS, offset++);
-      HDC hdc = GetDC(window_handle);
-      {
-        RECT rect;
-        GetClientRect(window_handle, &rect);
-        DrawPixelsOnScreen(hdc, rect.right - rect.left, rect.bottom - rect.top);
-      }
-      ReleaseDC(window_handle, hdc);
       result = DefWindowProc(window_handle, message, wParam, lParam);
     } break;
   }
@@ -106,6 +98,7 @@ LRESULT WindowProc(HWND window_handle, UINT message, WPARAM wParam, LPARAM lPara
 }
 
 int main(){
+
   Option opt[255];
   for(int i = 0 ; i < 255; i++){
     Option *o = &opt[i];
