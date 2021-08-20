@@ -38,13 +38,13 @@ unsigned int OptionIntrinsicValue(Option o, unsigned int current_price){
 
 //#define WIDTH 3840
 //#define HEIGHT 2160
-#define WIDTH 1000
-#define HEIGHT 1000
+#define WIDTH 800
+#define HEIGHT 600
 // Pixels start at (0,0) at top and go to (Height, width) at lowest
 unsigned int PIXELS [WIDTH * HEIGHT];
 
 
-void GenerateTestScreen(unsigned int * pixels, int offset){
+void FillScreen(unsigned int * pixels, int offset){
   for( int i = 0; i < WIDTH; i++){
     for( int j = 0; j < HEIGHT; j++){
       pixels[i * HEIGHT + j] = (0x00 + offset)&0xff;
@@ -54,37 +54,37 @@ void GenerateTestScreen(unsigned int * pixels, int offset){
 
 }
 
-static void DrawStraightLineAlongY(unsigned int *pixels, int point_x , int point_y1, int point_y2,unsigned int color){
-  if ( point_y1 > point_y2){
-    int temp = point_y2;
-    point_y2 = point_y1;
-    point_y1 = temp;
-  }
-
-  for(int y = point_y1 ; y < point_y2; y++){
-     pixels[y * WIDTH + point_x] = color;
-  }
-}
-
-static void DrawStraightLineAlongX(unsigned int *pixels, int point_y , int point_x1, int point_x2,unsigned int color){
-  if ( point_x1 > point_x2){
-    int temp = point_x2;
-    point_x2 = point_x1;
-    point_x1 = temp;
-  }
-
-  for(int x = point_x1 ; x <  point_x2 ; x++){
-     pixels[point_y * WIDTH + x] = color;
-  }
-}
-
 void DrawLine(unsigned int *pixels, int point_x1, int point_y1, int point_x2, int point_y2, unsigned int foreground_color){
-  if ( point_x1 == point_x2){
-    DrawStraightLineAlongX(pixels, point_x1, point_y1, point_y2, foreground_color);
+  if ( point_y1 == point_y2){
+    //DrawStraightLineAlongX
+    if ( point_x1 > point_x2){
+      int temp = point_x2;
+      point_x2 = point_x1;
+      point_x1 = temp;
+    }
+
+    int point_y = point_y1;
+    for(int x = point_x1 ; x <  point_x2 ; x++){
+      int idx = point_y * HEIGHT + x;
+      if( idx < 0 || idx > WIDTH * HEIGHT) continue;
+      pixels[idx] = foreground_color;
+    }
     return;
   }
-  if ( point_y1 == point_y2){
-    DrawStraightLineAlongY(pixels, point_y1, point_x1, point_x2, foreground_color);
+  if ( point_x1 == point_x2){
+    //DrawStraightLineAlongY
+    if ( point_y1 > point_y2){
+      int temp = point_y2;
+      point_y2 = point_y1;
+      point_y1 = temp;
+    }
+
+    int point_x = point_x1;
+    for(int y = point_y1 ; y < point_y2; y++){
+      int idx = y * HEIGHT + point_x;
+      if( idx < 0 || idx > WIDTH * HEIGHT) continue;
+      pixels[idx] = foreground_color;
+    }
     return;
   }
 
@@ -124,6 +124,8 @@ void DrawLine(unsigned int *pixels, int point_x1, int point_y1, int point_x2, in
       float x_pos = (float)x + 0.5f;
       float y_pos = (slope * x_pos) + y_intersect;
       int y = (int) (y_pos);
+      int idx = (y) * WIDTH + x;
+      if( idx < 0 || idx > WIDTH * HEIGHT) continue;
       pixels[(y) * WIDTH + x] = foreground_color ;
     }
   }else{
@@ -156,6 +158,8 @@ void DrawLine(unsigned int *pixels, int point_x1, int point_y1, int point_x2, in
       float y_pos = (float)y + 0.5;
       float x_pos = (slope_inverse * y_pos) - y_intersect;
       int x = (int) (x_pos);
+      int idx = (y) * WIDTH + x;
+      if( idx < 0 || idx > WIDTH * HEIGHT) continue;
       pixels[(y) * WIDTH + x] = foreground_color ;
     }
 
@@ -195,7 +199,7 @@ LRESULT WindowProc(HWND window_handle, UINT message, WPARAM wParam, LPARAM lPara
     } break;
     case WM_PAINT: {
        PAINTSTRUCT ps;
-       GenerateTestScreen((unsigned int *) &PIXELS, offset++);
+       FillScreen((unsigned int *) &PIXELS, offset++);
        HDC hdc = BeginPaint(window_handle, &ps);
        {
          RECT rect;
@@ -217,6 +221,8 @@ LRESULT WindowProc(HWND window_handle, UINT message, WPARAM wParam, LPARAM lPara
   return result;
 }
 
+int debug_point_x2 = 0;
+int debug_point_y2 = 0;
 int main(){
 
   Option opt[255];
@@ -261,11 +267,17 @@ int main(){
           DispatchMessage(&message);
           continue;
         }
-         GenerateTestScreen((unsigned int *) &PIXELS, offset++);
-         DrawLine((unsigned int*) PIXELS, 1, 1, 100, 100, 0xffeeff);
-         DrawLine((unsigned int*) PIXELS, 1, 10, 10, 100, 0xffeeff);
-         //DrawLine((unsigned int*) PIXELS, 100, 50, 200, 100, 0xffeeff);
+         FillScreen((unsigned int *) &PIXELS, offset++);
+         //Test codstatice just remove it {
+         DrawLine((unsigned int*) PIXELS, WIDTH / 2, HEIGHT / 2, debug_point_x2, debug_point_y2, 0xffeeff);
+         debug_point_x2++;
+         if (debug_point_x2 > WIDTH){
+          debug_point_x2 = 0;
+          debug_point_y2 = (debug_point_y2 + 1) % HEIGHT;
+          printf("%d\n", debug_point_y2);
+         }
          //DrawLine((unsigned int*) PIXELS, 100, 1, 100, 100, 0xffeeff);
+         //} End test code
          HDC hdc = GetDC(window);
          {
            RECT rect;
