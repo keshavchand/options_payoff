@@ -1,6 +1,5 @@
 #include <windows.h>
 #include <stdio.h>
-#include <assert.h>
 
 enum OptionType{
   UNINIT,
@@ -39,8 +38,8 @@ unsigned int OptionIntrinsicValue(Option o, unsigned int current_price){
 
 //#define WIDTH 3840
 //#define HEIGHT 2160
-#define WIDTH 800
-#define HEIGHT 600
+#define WIDTH 1000
+#define HEIGHT 800
 // Pixels start at (0,0) at top and go to (Height, width) at lowest
 unsigned int PIXELS [WIDTH * HEIGHT];
 
@@ -48,9 +47,7 @@ unsigned int PIXELS [WIDTH * HEIGHT];
 void FillScreen(unsigned int * pixels, int color){
   for( int i = 0; i < WIDTH; i++){
     for( int j = 0; j < HEIGHT; j++){
-//      pixels[i * HEIGHT + j] = (0x00 + offset)&0xff;
-//      pixels[i * HEIGHT + j] |= ((0x00 + offset)&0xff) << 8;
-    pixels[i * HEIGHT + j] = color;
+      pixels[i * HEIGHT + j] = color;
     }
   }
 
@@ -192,7 +189,7 @@ int DrawOnScreen(HDC hdc, int screen_width, int screen_height){
     bmi.bmiHeader.biCompression = BI_RGB;
     bmi.bmiHeader.biSizeImage = HEIGHT * WIDTH;
   }
-  SetStretchBltMode(hdc, COLORONCOLOR);
+  //SetStretchBltMode(hdc, COLORONCOLOR);
   return StretchDIBits(hdc, 
       0,0,
       screen_width, screen_height,
@@ -226,7 +223,6 @@ void CalculateOptionPayoff(Option* options, size_t no_of_options, int start_pric
   }
 }
 
-int i = 0x1b;
 void RenderPayoff(unsigned int* pixels, int max_payoff,int max_payoff_price, int min_payoff,int min_payoff_price, int *price_output, int start_price, int end_price){
 
   //For Width adjustment : X axis
@@ -242,39 +238,13 @@ void RenderPayoff(unsigned int* pixels, int max_payoff,int max_payoff_price, int
   float stretch_ratio_payoff = float(HEIGHT) / float(shifted_max_payoff);
 
   int no_of_prices = end_price - start_price;
+
   //Iterate[0..no_of_prices - 1] and draw a line from[i to i + 1];
-  
-  //Debug Stuff
-  char s[256];
-  s[255] = 0;
-
-  int last_point_x = (int) (0    ) * stretch_ratio_price;
-  int last_point_y = (int) (price_output[0] - min_payoff) * stretch_ratio_payoff;
-  //Debug Stuff end
-
   for (int i = 0 ; i < no_of_prices - 1; i++){
     int x_pos_start = (int) (i    ) * stretch_ratio_price;
     int x_pos_end   = (int) (i + 1) * stretch_ratio_price;
     int y_pos_start = (int) (price_output[i] - min_payoff) * stretch_ratio_payoff;
     int y_pos_end   = (int) (price_output[i + 1] - min_payoff) * stretch_ratio_payoff;
-
-    assert(x_pos_start < WIDTH);
-    assert(x_pos_end < WIDTH);
-    assert(y_pos_start < HEIGHT);
-    assert(y_pos_end < HEIGHT);
-    //Debug stuff
-#if 0
-    if (x_pos_start < last_point_x || y_pos_start < last_point_y){
-      snprintf(s, 255, "%d %d to %d %d\n", x_pos_start, y_pos_start, x_pos_end, y_pos_end);
-      OutputDebugStringA(s);
-    }        
-    last_point_x = x_pos_start;
-    last_point_y = y_pos_start;
-#endif
-    //Debug stuff end
-
-    //if ( i > 800) exit(0);
-    //printf("%d:%d -> %d:%d\n", x_pos_start, y_pos_start, x_pos_end, y_pos_end);
     DrawLine(pixels, x_pos_start, y_pos_start, x_pos_end, y_pos_end, 0xffeeff);
 
   }
@@ -282,7 +252,6 @@ void RenderPayoff(unsigned int* pixels, int max_payoff,int max_payoff_price, int
 }
 
 int Running = 1;
-int color = 0x808080;
 LRESULT WindowProc(HWND window_handle, UINT message, WPARAM wParam, LPARAM lParam){
   LRESULT result = 0;
   switch (message){
@@ -291,11 +260,6 @@ LRESULT WindowProc(HWND window_handle, UINT message, WPARAM wParam, LPARAM lPara
     } break;
     case WM_PAINT: {
        PAINTSTRUCT ps;
-#if 0
-       FillScreen((unsigned int *) &PIXELS, color);
-#else
-
-#endif
        HDC hdc = BeginPaint(window_handle, &ps);
        {
          RECT rect;
@@ -317,30 +281,57 @@ LRESULT WindowProc(HWND window_handle, UINT message, WPARAM wParam, LPARAM lPara
   return result;
 }
 
-int debug_point_x2 = 0;
-int debug_point_y2 = 0;
 int main(){
 
   Option opt[10];
-  for(int i = 100 ; i < 100 + 10; i++){
-    Option *o = &opt[i - 100];
-    o->type = CALL;
-    o->strike_price = i * 100 + i + 10;
-    o->expiry_date  = i % 30 + 1;
-    o->expiry_month = i % 12 + 1;
-    o->expiry_year  = 2021;
+  //for(int i = 100 ; i < 100 + 10; i++){
+  //  Option *o = &opt[i - 100];
+  //  //o->type = CALL ; 
+  //  o->type = PUT ; 
+  //  o->strike_price = i * 100 + i + 10;
+  //  o->expiry_date  = i % 30 + 1;
+  //  o->expiry_month = i % 12 + 1;
+  //  o->expiry_year  = 2021;
+  //}
+
+
+  struct GetAmt{
+    static int getAmt(float a){
+      return (int)100*a;
+    }
+  };
+
+  //Isn't worring about expiry dates
+  {
+    opt[0].type = CALL;
+    opt[0].strike_price = GetAmt::getAmt(150.00);
+  }
+  {
+    opt[1].type = PUT;
+    opt[1].strike_price = GetAmt::getAmt(100.00);
+  }
+  {
+    opt[2].type = PUT;
+    opt[2].strike_price = GetAmt::getAmt(200.00);
+  }
+  {
+    opt[3].type = CALL;
+    opt[3].strike_price = GetAmt::getAmt(500.00);
+  }
+  {
+    opt[4].type = CALL;
+    opt[4].strike_price = GetAmt::getAmt(100.00);
   }
 // 10000 = 100.00
 #define STARTPRICE 10000 
-// 10000 = 100.00
-#define ENDPRICE 30000 
+#define ENDPRICE 20000 
 
   int output_prices[1 + ENDPRICE - STARTPRICE];
   int max_payoff;
   int max_payoff_price;
   int min_payoff;
   int min_payoff_price;
-  CalculateOptionPayoff(opt, 10, STARTPRICE, ENDPRICE, output_prices, &max_payoff,&max_payoff_price, &min_payoff, &min_payoff_price);
+  CalculateOptionPayoff(opt, 5, STARTPRICE, ENDPRICE, output_prices, &max_payoff,&max_payoff_price, &min_payoff, &min_payoff_price);
 
   //for(int i = 0 ; i < 20; i++){
   //  printf("%u %u %u %u := %u\n", 
@@ -352,10 +343,12 @@ int main(){
 
   char * window_class_name = "Option Payoff Chart";
   WNDCLASSA window_class = {0};
-  window_class.style = CS_HREDRAW | CS_VREDRAW;
+  window_class.style = CS_HREDRAW | CS_VREDRAW | CS_OWNDC;
   window_class.lpfnWndProc = WindowProc;
   window_class.hInstance = GetModuleHandle(0);
   window_class.lpszClassName = window_class_name;
+
+  HDC hdc;
 
   if(RegisterClass(&window_class)){
     window = CreateWindowExA(0,
@@ -367,6 +360,7 @@ int main(){
 
     int a = 0x1a;
     if (window) {
+      hdc = GetDC(window);
       while (Running){
         MSG message;
         BOOL Ret = PeekMessage(&message, 0,0,0,1);
@@ -375,29 +369,12 @@ int main(){
           DispatchMessage(&message);
           continue;
         }
+        int color = 0x808080;
         FillScreen((unsigned int *) &PIXELS, color);
-#if 0
-        DrawLine((unsigned int* )&PIXELS, a++, 0, a, 1,0xffeeff);
-#else
         RenderPayoff(PIXELS, max_payoff , ENDPRICE, min_payoff , STARTPRICE, output_prices, STARTPRICE, ENDPRICE);
-#endif
-
-         //Test codstatice just remove it {
-         //DrawLineWide((unsigned int*) PIXELS, 5, WIDTH/2 , HEIGHT/2, debug_point_x2, debug_point_y2, 0x000000);
-         //debug_point_x2++;
-         //if (debug_point_x2 > WIDTH){
-         // debug_point_x2 = 0;
-         // debug_point_y2 = (debug_point_y2 + 1) % HEIGHT;
-         // printf("%d\n", debug_point_y2);
-         //}
-
-         HDC hdc = GetDC(window);
-         {
-           RECT rect;
-           GetClientRect(window, &rect);
-           DrawOnScreen(hdc, rect.right - rect.left, rect.bottom - rect.top);
-         }
-         ReleaseDC(window, hdc);
+        RECT rect;
+        GetClientRect(window, &rect);
+        DrawOnScreen(hdc, rect.right - rect.left, rect.bottom - rect.top);
         ShowWindow(window, SW_SHOW);
       }
     }
