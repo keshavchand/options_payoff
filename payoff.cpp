@@ -223,28 +223,29 @@ void CalculateOptionPayoff(Option* options, size_t no_of_options, int start_pric
   }
 }
 
-void RenderPayoff(unsigned int* pixels, int max_payoff,int max_payoff_price, int min_payoff,int min_payoff_price, int *price_output, int start_price, int end_price){
+void RenderPayoff(unsigned int* pixels, int max_payoff,int max_payoff_price, int min_payoff,int min_payoff_price, int *price_output, int start_price, int end_price, int padding_X = 0, int padding_Y = 0){
 
   //For Width adjustment : X axis
   int shifted_max_price     = max_payoff_price - min_payoff_price;
   int price_range_len       = shifted_max_price; 
   //max_price * streth      = Width
-  float stretch_ratio_price = float(WIDTH) / float(shifted_max_price);
+  float stretch_ratio_price = float(WIDTH - 2 * padding_X) / float(shifted_max_price);
 
   //For Height adjustment : Y axis
   int shifted_max_payoff    = max_payoff - min_payoff;
+  shifted_max_payoff        += 2 * padding_Y;
   int payoff_range_len      = shifted_max_payoff; 
   //max_payoff * streth      = HEIGHT
-  float stretch_ratio_payoff = float(HEIGHT) / float(shifted_max_payoff);
+  float stretch_ratio_payoff = float(HEIGHT - 2 * padding_Y) / float(shifted_max_payoff);
 
   int no_of_prices = end_price - start_price;
 
   //Iterate[0..no_of_prices - 1] and draw a line from[i to i + 1];
   for (int i = 0 ; i < no_of_prices - 1; i++){
-    int x_pos_start = (int) (i    ) * stretch_ratio_price;
-    int x_pos_end   = (int) (i + 1) * stretch_ratio_price;
-    int y_pos_start = (int) (price_output[i] - min_payoff) * stretch_ratio_payoff;
-    int y_pos_end   = (int) (price_output[i + 1] - min_payoff) * stretch_ratio_payoff;
+    int x_pos_start = (int) (i    ) * stretch_ratio_price + padding_X;
+    int x_pos_end   = (int) (i + 1) * stretch_ratio_price + padding_X;
+    int y_pos_start = (int) (price_output[i]     - min_payoff) * stretch_ratio_payoff + padding_Y;
+    int y_pos_end   = (int) (price_output[i + 1] - min_payoff) * stretch_ratio_payoff + padding_Y;
     DrawLine(pixels, x_pos_start, y_pos_start, x_pos_end, y_pos_end, 0xffeeff);
 
   }
@@ -358,7 +359,6 @@ int main(){
            CW_USEDEFAULT,CW_USEDEFAULT,CW_USEDEFAULT,CW_USEDEFAULT, 
            0, 0, GetModuleHandle(0), 0);
 
-    int a = 0x1a;
     if (window) {
       hdc = GetDC(window);
       while (Running){
@@ -371,7 +371,7 @@ int main(){
         }
         int color = 0x808080;
         FillScreen((unsigned int *) &PIXELS, color);
-        RenderPayoff(PIXELS, max_payoff , ENDPRICE, min_payoff , STARTPRICE, output_prices, STARTPRICE, ENDPRICE);
+        RenderPayoff(PIXELS, max_payoff , ENDPRICE, min_payoff , STARTPRICE, output_prices, STARTPRICE, ENDPRICE, 10 , 10);
         RECT rect;
         GetClientRect(window, &rect);
         DrawOnScreen(hdc, rect.right - rect.left, rect.bottom - rect.top);
