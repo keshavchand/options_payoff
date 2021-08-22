@@ -44,11 +44,12 @@ unsigned int OptionIntrinsicValue(Option o, unsigned int current_price){
 unsigned int PIXELS [WIDTH * HEIGHT];
 
 
-void FillScreen(unsigned int * pixels, int offset){
+void FillScreen(unsigned int * pixels, int color){
   for( int i = 0; i < WIDTH; i++){
     for( int j = 0; j < HEIGHT; j++){
-      pixels[i * HEIGHT + j] = (0x00 + offset)&0xff;
-      pixels[i * HEIGHT + j] |= ((0x00 + offset)&0xff) << 8;
+//      pixels[i * HEIGHT + j] = (0x00 + offset)&0xff;
+//      pixels[i * HEIGHT + j] |= ((0x00 + offset)&0xff) << 8;
+    pixels[i * HEIGHT + j] = color;
     }
   }
 
@@ -64,8 +65,8 @@ void DrawLine(unsigned int *pixels, int point_x1, int point_y1, int point_x2, in
     }
 
     int point_y = point_y1;
-    for(int x = point_x1 ; x <  point_x2 ; x++){
-      int idx = point_y * HEIGHT + x;
+    for(int x = point_x1 ; x <= point_x2 ; x++){
+      int idx = point_y * WIDTH + x;
       if( idx < 0 || idx > WIDTH * HEIGHT) continue;
       pixels[idx] = foreground_color;
     }
@@ -80,8 +81,8 @@ void DrawLine(unsigned int *pixels, int point_x1, int point_y1, int point_x2, in
     }
 
     int point_x = point_x1;
-    for(int y = point_y1 ; y < point_y2; y++){
-      int idx = y * HEIGHT + point_x;
+    for(int y = point_y1 ; y <= point_y2; y++){
+      int idx = y * WIDTH + point_x;
       if( idx < 0 || idx > WIDTH * HEIGHT) continue;
       pixels[idx] = foreground_color;
     }
@@ -167,13 +168,24 @@ void DrawLine(unsigned int *pixels, int point_x1, int point_y1, int point_x2, in
   
  return; 
 }
+
+void DrawLineWide(unsigned int* pixels, int width , int point_x1, int point_y1, int point_x2, int point_y2, unsigned int color){
+  int begin_x1 = point_x1 - (int)( width / 2);
+  int begin_x2 = point_x2 - (int)( width / 2);
+
+  for(int i = 0 ; i < width ; i++){
+    DrawLine(pixels, begin_x1 + i, point_y1, begin_x2 + i, point_y2, color);
+  }
  
+}
+
 static BITMAPINFO bmi;
+HWND window;
 int DrawOnScreen(HDC hdc, int screen_width, int screen_height){
   if(bmi.bmiHeader.biSize == 0){
     bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
     bmi.bmiHeader.biWidth = WIDTH;
-    bmi.bmiHeader.biHeight = -HEIGHT; // -ve for top down
+    bmi.bmiHeader.biHeight = HEIGHT; // -ve for top down
     bmi.bmiHeader.biPlanes = 1;
     bmi.bmiHeader.biBitCount = 32;
     bmi.bmiHeader.biCompression = BI_RGB;
