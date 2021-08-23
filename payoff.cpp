@@ -252,6 +252,58 @@ void RenderPayoff(unsigned int* pixels, int max_payoff,int max_payoff_price, int
 
 }
 
+#define STB_TRUETYPE_IMPLEMENTATION
+#include "./stb_truetype.h"
+
+static stbtt_fontinfo Font;
+unsigned char Font_contents[0xfe000];
+void STB_Font_render(unsigned int* pixels, char* text, char *font_filename, int foreground_color, int background_color){
+  if(!Font.userdata){
+    OFSTRUCT file_open_buff;
+    BY_HANDLE_FILE_INFORMATION file_info;
+    HANDLE TTF_File = CreateFileA(font_filename,GENERIC_READ,  FILE_SHARE_READ,NULL, OPEN_EXISTING, FILE_ATTRIBUTE_READONLY, NULL);
+    GetFileInformationByHandle(TTF_File, &file_info);
+    assert(file_info.nFileSizeHigh == 0);
+    unsigned long file_size = file_info.nFileSizeLow; 
+    assert(file_size < 0xfe000);
+
+    //Read entire file
+    unsigned long bytes_read = 0;
+    bool result = ReadFile(TTF_File, Font_contents, file_size,(DWORD *) &bytes_read, NULL);
+    assert(result);
+
+   stbtt_InitFont(&Font, Font_contents, stbtt_GetFontOffsetForIndex((const unsigned char*) &Font_contents,0));
+  }
+ 
+  int last_height = 0;
+  for(int i = 0 ; ; i++){
+    int width, height;
+    if(text[i] == 0) break;
+    int x_off;
+    unsigned char *bitmap = stbtt_GetCodepointBitmap(&Font, 0, stbtt_ScaleForPixelHeight(&Font, 80), text[i], &width, &height, &x_off ,0);
+
+    //for(int Y_pos = height - 1; Y_pos >= 0; Y_pos--){
+    for(int Y_pos = 0; Y_pos < height; Y_pos++){
+      for(int X_pos = 0; X_pos < width; X_pos++){
+        int idx_y = (height - Y_pos)* WIDTH;
+        int idx_x = (X_pos + last_height);
+        if(idx_x > WIDTH) break;
+        int idx = idx_y + idx_x;
+        if(idx < 0 || idx > HEIGHT*WIDTH) break;
+        pixels[idx] = background_color;
+        if(bitmap[Y_pos * width + X_pos]) pixels[idx] = foreground_color;
+//          (unsigned int)(bitmap[Y_pos * width + X_pos] << 8 * 3 |
+//                        bitmap[Y_pos * width + X_pos]);
+           
+      }
+    }
+
+    last_height += height;
+    stbtt_FreeBitmap(bitmap, 0);
+  }
+}
+
+
 int Running = 1;
 LRESULT WindowProc(HWND window_handle, UINT message, WPARAM wParam, LPARAM lParam){
   LRESULT result = 0;
@@ -372,6 +424,7 @@ int main(){
         int color = 0x808080;
         FillScreen((unsigned int *) &PIXELS, color);
         RenderPayoff(PIXELS, max_payoff , ENDPRICE, min_payoff , STARTPRICE, output_prices, STARTPRICE, ENDPRICE, 10 , 10);
+        STB_Font_render(PIXELS, "HELLO", "C:/Windows/Fonts/arial.ttf", 0xffeeff, 0x808080);
         RECT rect;
         GetClientRect(window, &rect);
         DrawOnScreen(hdc, rect.right - rect.left, rect.bottom - rect.top);
