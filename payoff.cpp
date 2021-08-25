@@ -36,10 +36,10 @@ unsigned int OptionIntrinsicValue(Option o, unsigned int current_price){
   }
 }
 
-//#define WIDTH 3840
-//#define HEIGHT 2160
-#define WIDTH 1000
-#define HEIGHT 800
+#define WIDTH 3840
+#define HEIGHT 2160
+//#define WIDTH 1000
+//#define HEIGHT 800
 // Pixels start at (0,0) at top and go to (Height, width) at lowest
 unsigned int PIXELS [WIDTH * HEIGHT];
 
@@ -223,6 +223,18 @@ void CalculateOptionPayoff(Option* options, size_t no_of_options, int start_pric
   }
 }
 
+void OptionRepr(char * dst, int size, Option* opt, int index){
+  dst[size - 1] = 0; 
+  switch(opt[index].type){
+    case PUT:{
+     snprintf(dst, size-1, "PUT of %.2f\n", (double)(opt[index].strike_price/100));
+    }break;
+    case CALL:{
+     snprintf(dst, size-1, "CALL of %.2f\n", (double)(opt[index].strike_price/100));
+    }break;
+  };
+}
+
 void RenderPayoff(unsigned int* pixels, int max_payoff,int max_payoff_price, int min_payoff,int min_payoff_price, int *price_output, int start_price, int end_price, int padding_X = 0, int padding_Y = 0){
 
   //For Width adjustment : X axis
@@ -246,7 +258,7 @@ void RenderPayoff(unsigned int* pixels, int max_payoff,int max_payoff_price, int
     int x_pos_end   = (int) (i + 1) * stretch_ratio_price + padding_X;
     int y_pos_start = (int) (price_output[i]     - min_payoff) * stretch_ratio_payoff + padding_Y;
     int y_pos_end   = (int) (price_output[i + 1] - min_payoff) * stretch_ratio_payoff + padding_Y;
-    DrawLine(pixels, x_pos_start, y_pos_start, x_pos_end, y_pos_end, 0xffeeff);
+    DrawLineWide(pixels, 10, x_pos_start, y_pos_start, x_pos_end, y_pos_end, 0xffeeff);
 
   }
 
@@ -257,7 +269,7 @@ void RenderPayoff(unsigned int* pixels, int max_payoff,int max_payoff_price, int
 
 static stbtt_fontinfo Font;
 unsigned char Font_contents[0xfe000];
-void STB_Font_render(unsigned int* pixels, int line_height, char* text, char *font_filename, int foreground_color, int background_color){
+void STB_Font_render(unsigned int* pixels, int line_height, int x_offset, int y_offset, char* text, char *font_filename, int foreground_color){
   if(!Font.userdata){
     OFSTRUCT file_open_buff;
     BY_HANDLE_FILE_INFORMATION file_info;
@@ -275,36 +287,34 @@ void STB_Font_render(unsigned int* pixels, int line_height, char* text, char *fo
    stbtt_InitFont(&Font, Font_contents, stbtt_GetFontOffsetForIndex((const unsigned char*) &Font_contents,0));
   }
  
-  int last_height = 0;
+  int char_distance = 0;
   float scale = stbtt_ScaleForPixelHeight(&Font, line_height);
+  static int correction = 0;
+  //printf("%d\n", correction);
   for(int i = 0 ; text[i] != 0; i++){
     int width, height;
     int x_off;
-    unsigned char *bitmap = stbtt_GetCodepointBitmap(&Font, 0, stbtt_ScaleForPixelHeight(&Font, 80), text[i], &width, &height, &x_off ,0);
+    unsigned char *bitmap = stbtt_GetCodepointBitmap(&Font, 0, scale, text[i], &width, &height, &x_off ,0);
 
-    //for(int Y_pos = height - 1; Y_pos >= 0; Y_pos--){
     for(int Y_pos = 0; Y_pos < height; Y_pos++){
       for(int X_pos = 0; X_pos < width; X_pos++){
-        int idx_y = (height - Y_pos)* WIDTH;
-        int idx_x = (X_pos + last_height);
+        //int idx_y = (HEIGHT - 10 - Y_pos)* WIDTH;
+        int idx_y = ((height + y_offset)- Y_pos) * WIDTH;
+        int idx_x = (X_pos + x_offset + char_distance);
         if(idx_x > WIDTH) break;
         int idx = idx_y + idx_x;
         if(idx < 0 || idx > HEIGHT*WIDTH) break;
-        pixels[idx] = background_color;
         if(bitmap[Y_pos * width + X_pos]) pixels[idx] = foreground_color;
-//          (unsigned int)(bitmap[Y_pos * width + X_pos] << 8 * 3 |
-//                        bitmap[Y_pos * width + X_pos]);
-           
       }
     }
 
     int advance_width, leftSideBearing;
     stbtt_GetCodepointHMetrics(&Font, text[i], &advance_width, &leftSideBearing);
-    last_height += (int)(advance_width * scale);
-    last_height += (int)(stbtt_GetCodepointKernAdvance(&Font, text[i], text[i+1]) * scale);
-    printf("%d\n", last_height);
+    char_distance += (int)(advance_width * scale);
+    char_distance += (int)(stbtt_GetCodepointKernAdvance(&Font, text[i], text[i+1]) * scale);
     stbtt_FreeBitmap(bitmap, 0);
   }
+ ++correction;
 }
 
 
@@ -340,20 +350,9 @@ LRESULT WindowProc(HWND window_handle, UINT message, WPARAM wParam, LPARAM lPara
 
 int main(){
 
-  Option opt[10];
-  //for(int i = 100 ; i < 100 + 10; i++){
-  //  Option *o = &opt[i - 100];
-  //  //o->type = CALL ; 
-  //  o->type = PUT ; 
-  //  o->strike_price = i * 100 + i + 10;
-  //  o->expiry_date  = i % 30 + 1;
-  //  o->expiry_month = i % 12 + 1;
-  //  o->expiry_year  = 2021;
-  //}
-
-
+  Option opt[5];
   struct GetAmt{
-    static int getAmt(float a){
+    constexpr static int getAmt(float a){
       return (int)100*a;
     }
   };
@@ -365,7 +364,7 @@ int main(){
   }
   {
     opt[1].type = PUT;
-    opt[1].strike_price = GetAmt::getAmt(100.00);
+    opt[1].strike_price = GetAmt::getAmt(10.00);
   }
   {
     opt[2].type = PUT;
@@ -380,8 +379,8 @@ int main(){
     opt[4].strike_price = GetAmt::getAmt(100.00);
   }
 // 10000 = 100.00
-#define STARTPRICE 10000 
-#define ENDPRICE 20000 
+#define STARTPRICE GetAmt::getAmt(100.00)
+#define ENDPRICE GetAmt::getAmt(200.00)
 
   int output_prices[1 + ENDPRICE - STARTPRICE];
   int max_payoff;
@@ -389,6 +388,8 @@ int main(){
   int min_payoff;
   int min_payoff_price;
   CalculateOptionPayoff(opt, 5, STARTPRICE, ENDPRICE, output_prices, &max_payoff,&max_payoff_price, &min_payoff, &min_payoff_price);
+
+  printf("%d %d", max_payoff, min_payoff);
 
   //for(int i = 0 ; i < 20; i++){
   //  printf("%u %u %u %u := %u\n", 
@@ -428,7 +429,14 @@ int main(){
         int color = 0x808080;
         FillScreen((unsigned int *) &PIXELS, color);
         RenderPayoff(PIXELS, max_payoff , ENDPRICE, min_payoff , STARTPRICE, output_prices, STARTPRICE, ENDPRICE, 10 , 10);
-        STB_Font_render(PIXELS,100, "hello World", "C:/Windows/Fonts/arial.ttf", 0xffeeff, 0x808080);
+        STB_Font_render(PIXELS,200,0,0, "OPTION PAYOFF", "C:/Windows/Fonts/arial.ttf", 0xffeeff);
+#define REPR_SIZE 255
+        static char option_repr[REPR_SIZE];
+        for (int i = 0 ; i < 5 ; i++){
+          OptionRepr((char *)option_repr, REPR_SIZE, opt, i);
+          int line_size = 100;
+          STB_Font_render(PIXELS,line_size,0,HEIGHT - line_size*(i + 1), option_repr, "C:/Windows/Fonts/arial.ttf", 0xffeeff);
+        }
         RECT rect;
         GetClientRect(window, &rect);
         DrawOnScreen(hdc, rect.right - rect.left, rect.bottom - rect.top);
