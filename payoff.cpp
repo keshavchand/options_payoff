@@ -257,7 +257,7 @@ void RenderPayoff(unsigned int* pixels, int max_payoff,int max_payoff_price, int
 
 static stbtt_fontinfo Font;
 unsigned char Font_contents[0xfe000];
-void STB_Font_render(unsigned int* pixels, char* text, char *font_filename, int foreground_color, int background_color){
+void STB_Font_render(unsigned int* pixels, int line_height, char* text, char *font_filename, int foreground_color, int background_color){
   if(!Font.userdata){
     OFSTRUCT file_open_buff;
     BY_HANDLE_FILE_INFORMATION file_info;
@@ -276,9 +276,9 @@ void STB_Font_render(unsigned int* pixels, char* text, char *font_filename, int 
   }
  
   int last_height = 0;
-  for(int i = 0 ; ; i++){
+  float scale = stbtt_ScaleForPixelHeight(&Font, line_height);
+  for(int i = 0 ; text[i] != 0; i++){
     int width, height;
-    if(text[i] == 0) break;
     int x_off;
     unsigned char *bitmap = stbtt_GetCodepointBitmap(&Font, 0, stbtt_ScaleForPixelHeight(&Font, 80), text[i], &width, &height, &x_off ,0);
 
@@ -298,7 +298,11 @@ void STB_Font_render(unsigned int* pixels, char* text, char *font_filename, int 
       }
     }
 
-    last_height += height;
+    int advance_width, leftSideBearing;
+    stbtt_GetCodepointHMetrics(&Font, text[i], &advance_width, &leftSideBearing);
+    last_height += (int)(advance_width * scale);
+    last_height += (int)(stbtt_GetCodepointKernAdvance(&Font, text[i], text[i+1]) * scale);
+    printf("%d\n", last_height);
     stbtt_FreeBitmap(bitmap, 0);
   }
 }
@@ -424,7 +428,7 @@ int main(){
         int color = 0x808080;
         FillScreen((unsigned int *) &PIXELS, color);
         RenderPayoff(PIXELS, max_payoff , ENDPRICE, min_payoff , STARTPRICE, output_prices, STARTPRICE, ENDPRICE, 10 , 10);
-        STB_Font_render(PIXELS, "HELLO", "C:/Windows/Fonts/arial.ttf", 0xffeeff, 0x808080);
+        STB_Font_render(PIXELS,100, "hello World", "C:/Windows/Fonts/arial.ttf", 0xffeeff, 0x808080);
         RECT rect;
         GetClientRect(window, &rect);
         DrawOnScreen(hdc, rect.right - rect.left, rect.bottom - rect.top);
