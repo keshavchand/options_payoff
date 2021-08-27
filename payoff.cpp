@@ -9,30 +9,101 @@ enum OptionType{
 #define OPTION_MAX __OPTION_TYPES - UNINIT
 };
 
-typedef struct {
+#define Option_buffer_size 10
+struct Option{
   OptionType type;
   //(thinking reqd) Oil prices went to -ve in 2020 so maybe signed??
   unsigned int strike_price; // = Rupees * 100 + paisa
+#if WILL_HANDLE_EXPIRY
   unsigned int expiry_date;  // Range between 1-30
   unsigned int expiry_month; // Range between 1-12
   unsigned int expiry_year;  // 
-}Option ;
+#endif
+} opt[Option_buffer_size];
+static int option_amt = 0;
 
-unsigned int OptionIntrinsicValue(Option o, unsigned int current_price){
+struct Stock{
+  unsigned int price; // = Rupees * 100 + paisa
+};
+
+enum TradeType{ BUY, SELL};
+enum ContractType{ OPTION, STOCK};
+
+#define Trade_buffer_size 10
+struct Trade{
+ TradeType    event;
+ ContractType type; 
+ unsigned int money_exchange; 
+    // Will be the absolute value of the money exchange
+    // When calculating value will be multiplied with 
+    // -1 if event is BUY and 1 if event is SELL
+ 
+ union{
+  Option option;
+  Stock stock;
+ };
+} trades[Trade_buffer_size];
+static int trade_buffer_amt = 0;
+
+inline int OptionPostionValue(Option o, unsigned int current_price){
   if (o.type == CALL){
     if ( current_price < o.strike_price){
       return 0;
     }else{
-      return current_price - o.strike_price;
+      return (int) (current_price - o.strike_price);
     }
   }else if(o.type == PUT){
     if ( current_price > o.strike_price){
       return 0;
     }else{
-      return o.strike_price - current_price;
+      return (int) (o.strike_price - current_price);
     }
   }else{
     return -1; 
+  }
+}
+
+inline int StockValue(Stock stock, unsigned int current_price){
+  return (int) (current_price - stock.price);
+}
+
+int TradeValue(Trade trade, unsigned int current_price){
+  int payoff = 0;
+  switch (trade.type){
+    case OPTION:{
+      payoff += OptionPostionValue(trade.option, current_price);
+    }break;
+    case STOCK:{
+      payoff += StockValue(trade.stock , current_price);
+    }break;
+  };
+
+  if (trade.event == BUY) payoff = payoff;
+  if (trade.event == SELL) payoff = -payoff;
+  payoff += trade.money_exchange;
+  return payoff;
+}
+
+void CalculateTradeValueInRange(Trade* trades, size_t no_of_trades, int start_price, int end_price, int* price_output, int* max_payoff, int* max_payoff_price, int *min_payoff, int * min_payoff_price){
+
+  *min_payoff = ( 1 << 31) - 1;
+  *max_payoff = -(*min_payoff);
+  for(int price = start_price ; price <= end_price; ++price){
+    int total_payoff = 0;
+    for(int opt_idx = 0; opt_idx < no_of_trades; opt_idx++){
+      int r = TradeValue(trades[opt_idx], price);
+      total_payoff += r;
+    }
+
+    if(total_payoff < *min_payoff) {
+      *min_payoff = total_payoff;
+      *min_payoff_price = price;
+    }
+    if(total_payoff > *max_payoff) {
+      *max_payoff = total_payoff;
+      *max_payoff_price = price;
+    }
+    price_output[price - start_price] = total_payoff;
   }
 }
 
@@ -174,6 +245,9 @@ void DrawLineWide(unsigned int* pixels, int width , int point_x1, int point_y1, 
   for(int i = 0 ; i < width ; i++){
     DrawLine(pixels, begin_x1 + i, point_y1, begin_x2 + i, point_y2, color);
   }
+  for(int i = 0 ; i < width ; i++){
+    DrawLine(pixels, begin_x1, point_y1 + i, begin_x2, point_y2 + i, color);
+  }
  
 }
 
@@ -201,13 +275,13 @@ int DrawOnScreen(HDC hdc, int screen_width, int screen_height){
 
 
 //price_output should be the same size as that of (1 + end_price - start_price)
-void CalculateOptionPayoff(Option* options, size_t no_of_options, int start_price, int end_price, int * price_output, int* max_payoff, int* max_payoff_price , int* min_payoff, int* min_payoff_price){
+void CalculateOptionValueInRange(Option* options, size_t no_of_options, int start_price, int end_price, int * price_output, int* max_payoff, int* max_payoff_price , int* min_payoff, int* min_payoff_price){
   *min_payoff = ( 1 << 31) - 1;
   *max_payoff = -(*min_payoff);
   for(int price = start_price ; price <= end_price; price++){
     int total_payoff = 0;
     for(int opt_idx = 0; opt_idx < no_of_options; opt_idx++){
-      int r = OptionIntrinsicValue(options[opt_idx], price);
+      int r = OptionPostionValue(options[opt_idx], price);
       total_payoff += r;
     }
     if(total_payoff < *min_payoff) {
@@ -235,7 +309,7 @@ void OptionRepr(char * dst, int size, Option* opt, int index){
   };
 }
 
-void RenderPayoff(unsigned int* pixels, int max_payoff,int max_payoff_price, int min_payoff,int min_payoff_price, int *price_output, int start_price, int end_price, int padding_X = 0, int padding_Y = 0){
+void RenderPayoff(unsigned int* pixels, int max_payoff,int max_payoff_price, int min_payoff,int min_payoff_price, int *price_output,  int padding_X = 0, int padding_Y = 0){
 
   //For Width adjustment : X axis
   int shifted_max_price     = max_payoff_price - min_payoff_price;
@@ -250,7 +324,7 @@ void RenderPayoff(unsigned int* pixels, int max_payoff,int max_payoff_price, int
   //max_payoff * streth      = HEIGHT
   float stretch_ratio_payoff = float(HEIGHT - 2 * padding_Y) / float(shifted_max_payoff);
 
-  int no_of_prices = end_price - start_price;
+  int no_of_prices = max_payoff_price - min_payoff_price;
 
   //Iterate[0..no_of_prices - 1] and draw a line from[i to i + 1];
   for (int i = 0 ; i < no_of_prices - 1; i++){
@@ -289,8 +363,6 @@ void STB_Font_render(unsigned int* pixels, int line_height, int x_offset, int y_
  
   int char_distance = 0;
   float scale = stbtt_ScaleForPixelHeight(&Font, line_height);
-  static int correction = 0;
-  //printf("%d\n", correction);
   for(int i = 0 ; text[i] != 0; i++){
     int width, height;
     int x_off;
@@ -314,7 +386,6 @@ void STB_Font_render(unsigned int* pixels, int line_height, int x_offset, int y_
     char_distance += (int)(stbtt_GetCodepointKernAdvance(&Font, text[i], text[i+1]) * scale);
     stbtt_FreeBitmap(bitmap, 0);
   }
- ++correction;
 }
 
 
@@ -350,7 +421,6 @@ LRESULT WindowProc(HWND window_handle, UINT message, WPARAM wParam, LPARAM lPara
 
 int main(){
 
-  Option opt[5];
   struct GetAmt{
     constexpr static int getAmt(float a){
       return (int)100*a;
@@ -359,36 +429,72 @@ int main(){
 
   //Isn't worring about expiry dates
   {
-    opt[0].type = CALL;
-    opt[0].strike_price = GetAmt::getAmt(150.00);
+    assert(trade_buffer_amt < Trade_buffer_size);
+    trades[trade_buffer_amt].event               = BUY;
+    trades[trade_buffer_amt].type                = OPTION;
+    trades[trade_buffer_amt].money_exchange      = GetAmt::getAmt(10.00);
+    trades[trade_buffer_amt].option.type         = CALL;
+    trades[trade_buffer_amt].option.strike_price = GetAmt::getAmt(100.00);
+    printf("%d %d\n", trade_buffer_amt, TradeValue(trades[trade_buffer_amt], GetAmt::getAmt(150.00)));
+    trade_buffer_amt ++;
   }
   {
-    opt[1].type = PUT;
-    opt[1].strike_price = GetAmt::getAmt(10.00);
+    assert(trade_buffer_amt < Trade_buffer_size);
+    trades[trade_buffer_amt].event               = SELL;
+    trades[trade_buffer_amt].type                = OPTION;
+    trades[trade_buffer_amt].money_exchange      = GetAmt::getAmt(10.00);
+    trades[trade_buffer_amt].option.type         = CALL;
+    trades[trade_buffer_amt].option.strike_price = GetAmt::getAmt(100.00);
+    printf("%d %d\n", trade_buffer_amt, TradeValue(trades[trade_buffer_amt], GetAmt::getAmt(150.00)));
+    trade_buffer_amt ++;
+  }
+
+  return 0;
+  {
+    assert(option_amt < Option_buffer_size);
+    opt[option_amt].type = CALL;
+    opt[option_amt].strike_price = GetAmt::getAmt(200.00);
+    option_amt ++;
   }
   {
-    opt[2].type = PUT;
-    opt[2].strike_price = GetAmt::getAmt(200.00);
+    assert(option_amt < Option_buffer_size);
+    opt[option_amt].type = CALL;
+    opt[option_amt].strike_price = GetAmt::getAmt(500.00);
+    option_amt ++;
   }
   {
-    opt[3].type = CALL;
-    opt[3].strike_price = GetAmt::getAmt(500.00);
+    assert(option_amt < Option_buffer_size);
+    opt[option_amt].type = CALL;
+    opt[option_amt].strike_price = GetAmt::getAmt(100.00);
+    option_amt ++;
   }
   {
-    opt[4].type = CALL;
-    opt[4].strike_price = GetAmt::getAmt(100.00);
+    assert(option_amt < Option_buffer_size);
+    opt[option_amt].type = CALL;
+    opt[option_amt].strike_price = GetAmt::getAmt(200.00);
+    option_amt ++;
   }
 // 10000 = 100.00
 #define STARTPRICE GetAmt::getAmt(100.00)
-#define ENDPRICE GetAmt::getAmt(200.00)
+#define ENDPRICE GetAmt::getAmt(300.00)
 
   int output_prices[1 + ENDPRICE - STARTPRICE];
   int max_payoff;
   int max_payoff_price;
   int min_payoff;
   int min_payoff_price;
-  CalculateOptionPayoff(opt, 5, STARTPRICE, ENDPRICE, output_prices, &max_payoff,&max_payoff_price, &min_payoff, &min_payoff_price);
 
+#if 1 //Just output debug some data
+          LARGE_INTEGER tick1, tick2;
+          LARGE_INTEGER frequency;
+          QueryPerformanceCounter(&tick1);
+          QueryPerformanceFrequency(&frequency);
+  CalculateOptionValueInRange(opt, option_amt, STARTPRICE, ENDPRICE, output_prices, &max_payoff,&max_payoff_price, &min_payoff, &min_payoff_price);
+          QueryPerformanceCounter(&tick2);
+          printf("%llu micros\n", ((tick2.QuadPart - tick1.QuadPart) * 1000000)/frequency.QuadPart);
+#else
+          CalculateOptionValueInRange(opt, option_amt, STARTPRICE, ENDPRICE, output_prices, &max_payoff,&max_payoff_price, &min_payoff, &min_payoff_price);
+#endif
   printf("%d %d", max_payoff, min_payoff);
 
   //for(int i = 0 ; i < 20; i++){
@@ -428,14 +534,25 @@ int main(){
         }
         int color = 0x808080;
         FillScreen((unsigned int *) &PIXELS, color);
-        RenderPayoff(PIXELS, max_payoff , ENDPRICE, min_payoff , STARTPRICE, output_prices, STARTPRICE, ENDPRICE, 10 , 10);
+#if 1 //Just output debug some data
+          LARGE_INTEGER tick1, tick2;
+          LARGE_INTEGER frequency;
+          QueryPerformanceCounter(&tick1);
+          QueryPerformanceFrequency(&frequency);
+          RenderPayoff(PIXELS, max_payoff , ENDPRICE, min_payoff , STARTPRICE, output_prices, 100 , 100); //Main Part
+          QueryPerformanceCounter(&tick2);
+          printf("%llu micros\n", ((tick2.QuadPart - tick1.QuadPart) * 1000000)/frequency.QuadPart);
+#else
+          RenderPayoff(PIXELS, max_payoff , ENDPRICE, min_payoff , STARTPRICE, output_prices, 100 , 100); //Main Part
+#endif
         STB_Font_render(PIXELS,200,0,0, "OPTION PAYOFF", "C:/Windows/Fonts/arial.ttf", 0xffeeff);
 #define REPR_SIZE 255
         static char option_repr[REPR_SIZE];
-        for (int i = 0 ; i < 5 ; i++){
-          OptionRepr((char *)option_repr, REPR_SIZE, opt, i);
+        printf("%d\n", option_amt);
+        for (int i = 0 ; i < option_amt ; i++){
           int line_size = 100;
-          STB_Font_render(PIXELS,line_size,0,HEIGHT - line_size*(i + 1), option_repr, "C:/Windows/Fonts/arial.ttf", 0xffeeff);
+          OptionRepr((char *)option_repr, REPR_SIZE, opt, i);
+          STB_Font_render(PIXELS,line_size,10,HEIGHT - line_size*(i + 1), option_repr, "C:/Windows/Fonts/arial.ttf", 0xffeeff);
         }
         RECT rect;
         GetClientRect(window, &rect);
