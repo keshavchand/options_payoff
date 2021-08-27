@@ -347,7 +347,10 @@ void RenderPayoff(unsigned int* pixels, int max_payoff,int max_payoff_price, int
     int x_pos_end   = (int) (i + 1) * stretch_ratio_price + padding_X;
     int y_pos_start = (int) (price_output[i]     - min_payoff) * stretch_ratio_payoff + padding_Y;
     int y_pos_end   = (int) (price_output[i + 1] - min_payoff) * stretch_ratio_payoff + padding_Y;
-    DrawLineWide(pixels, 10, x_pos_start, y_pos_start, x_pos_end, y_pos_end, 0xffeeff);
+    if( price_output[i] > 0)
+    DrawLineWide(pixels, 10, x_pos_start, y_pos_start, x_pos_end, y_pos_end, 0x008000 );
+    else
+    DrawLineWide(pixels, 10, x_pos_start, y_pos_start, x_pos_end, y_pos_end, 0x800000 );
 
   }
 
@@ -454,16 +457,16 @@ int main(){
   }
   {
     assert(trade_buffer_amt < Trade_buffer_size);
-    trades[trade_buffer_amt].event               = SELL;
+    trades[trade_buffer_amt].event               = BUY;
     trades[trade_buffer_amt].contract_type       = STOCK;
-    trades[trade_buffer_amt].money_exchange      = GetAmt::getAmt(10.00);
+    trades[trade_buffer_amt].money_exchange      = GetAmt::getAmt(100.00);
     trade_buffer_amt ++;
   }
   {
     assert(trade_buffer_amt < Trade_buffer_size);
     trades[trade_buffer_amt].event               = SELL;
     trades[trade_buffer_amt].contract_type       = STOCK;
-    trades[trade_buffer_amt].money_exchange      = GetAmt::getAmt(10.00);
+    trades[trade_buffer_amt].money_exchange      = GetAmt::getAmt(150.00);
     trade_buffer_amt ++;
   }
   {
@@ -503,28 +506,7 @@ int main(){
   int min_payoff;
   int min_payoff_price;
 
-#if 0 //Just output debug some data
-  LARGE_INTEGER tick1, tick2;
-  LARGE_INTEGER frequency;
-  QueryPerformanceCounter(&tick1);
-  QueryPerformanceFrequency(&frequency);
-  //CalculateOptionValueInRange(opt, option_amt, STARTPRICE, ENDPRICE, output_prices, &max_payoff,&max_payoff_price, &min_payoff, &min_payoff_price);
   CalculateTradeValueInRange(trades, trade_buffer_amt, STARTPRICE, ENDPRICE, output_prices, &max_payoff, &max_payoff_price, &min_payoff, &min_payoff_price);
-  QueryPerformanceCounter(&tick2);
-  printf("%llu micros\n", ((tick2.QuadPart - tick1.QuadPart) * 1000000)/frequency.QuadPart);
-#else
-  //CalculateOptionValueInRange(opt, option_amt, STARTPRICE, ENDPRICE, output_prices, &max_payoff,&max_payoff_price, &min_payoff, &min_payoff_price);
-  CalculateTradeValueInRange(trades, trade_buffer_amt, STARTPRICE, ENDPRICE, output_prices, &max_payoff, &max_payoff_price, &min_payoff, &min_payoff_price);
-#endif
-
-  char repr[255];
-  while (trade_buffer_amt > 0){
-    TradeRepr(repr, 255, trades, --trade_buffer_amt);
-    printf("%s\n", repr);
-  }
-
-  printf("%d %d\n", max_payoff, min_payoff);
-  printf("%p", output_prices); //else it gets optimized out (For testing only)
 
   char * window_class_name = "Option Payoff Chart";
   WNDCLASSA window_class = {0};
@@ -553,27 +535,17 @@ int main(){
           DispatchMessage(&message);
           continue;
         }
-        int color = 0x808080;
+        int color = 0x282828;
         FillScreen((unsigned int *) &PIXELS, color);
-#if 0 //Just output debug some data
-          LARGE_INTEGER tick1, tick2;
-          LARGE_INTEGER frequency;
-          QueryPerformanceCounter(&tick1);
-          QueryPerformanceFrequency(&frequency);
-          RenderPayoff(PIXELS, max_payoff , ENDPRICE, min_payoff , STARTPRICE, output_prices, 100 , 100); //Main Part
-          QueryPerformanceCounter(&tick2);
-          printf("%llu micros\n", ((tick2.QuadPart - tick1.QuadPart) * 1000000)/frequency.QuadPart);
-#else
-          RenderPayoff(PIXELS, max_payoff , ENDPRICE, min_payoff , STARTPRICE, output_prices, 100 , 100); //Main Part
-#endif
-        STB_Font_render(PIXELS,200,0,0, "OPTION PAYOFF", "C:/Windows/Fonts/arial.ttf", 0xffeeff);
+        RenderPayoff(PIXELS, max_payoff , ENDPRICE, min_payoff , STARTPRICE, output_prices, 100 , 100); //Main Part
+        STB_Font_render(PIXELS,200,0,0, "TRADE PAYOFF", "C:/Windows/Fonts/arial.ttf", 0xffeeff);
 #define REPR_SIZE 255
-        static char option_repr[REPR_SIZE];
+        static char trade_repr[REPR_SIZE];
         //printf("%d\n", option_amt);
-        for (int i = 0 ; i < option_amt ; i++){
+        for (int i = 0 ; i < trade_buffer_amt ; i++){
           int line_size = 100;
-          OptionRepr((char *)option_repr, REPR_SIZE, opt, i);
-          STB_Font_render(PIXELS,line_size,10,HEIGHT - line_size*(i + 1), option_repr, "C:/Windows/Fonts/arial.ttf", 0xffeeff);
+          TradeRepr((char *)trade_repr, REPR_SIZE, trades, i);
+          STB_Font_render(PIXELS,line_size,10,HEIGHT - line_size*(i + 1), trade_repr, "C:/Windows/Fonts/arial.ttf", 0xffeeff);
         }
         RECT rect;
         GetClientRect(window, &rect);
