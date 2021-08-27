@@ -454,19 +454,16 @@ int main(){
   }
   {
     assert(trade_buffer_amt < Trade_buffer_size);
-    trades[trade_buffer_amt].event               = BUY;
-    trades[trade_buffer_amt].contract_type       = STOCK;
-    trades[trade_buffer_amt].money_exchange      = GetAmt::getAmt(110.00);
-    trade_buffer_amt ++;
-  }
-
-  {
-    assert(trade_buffer_amt < Trade_buffer_size);
-    trades[trade_buffer_amt].event               = BUY;
+    trades[trade_buffer_amt].event               = SELL;
     trades[trade_buffer_amt].contract_type       = STOCK;
     trades[trade_buffer_amt].money_exchange      = GetAmt::getAmt(10.00);
-    trades[trade_buffer_amt].option.type         = CALL;
-    trades[trade_buffer_amt].option.strike_price = GetAmt::getAmt(100.00);
+    trade_buffer_amt ++;
+  }
+  {
+    assert(trade_buffer_amt < Trade_buffer_size);
+    trades[trade_buffer_amt].event               = SELL;
+    trades[trade_buffer_amt].contract_type       = STOCK;
+    trades[trade_buffer_amt].money_exchange      = GetAmt::getAmt(10.00);
     trade_buffer_amt ++;
   }
   {
@@ -526,9 +523,9 @@ int main(){
     printf("%s\n", repr);
   }
 
-  printf("%d %d", max_payoff, min_payoff);
+  printf("%d %d\n", max_payoff, min_payoff);
+  printf("%p", output_prices); //else it gets optimized out (For testing only)
 
-  return 0;
   char * window_class_name = "Option Payoff Chart";
   WNDCLASSA window_class = {0};
   window_class.style = CS_HREDRAW | CS_VREDRAW | CS_OWNDC;
