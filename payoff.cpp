@@ -187,17 +187,18 @@ void RenderPayoff(unsigned int* pixels, int max_payoff,int max_payoff_price, int
 
   //Iterate[0..no_of_prices - 1] and draw a line from[i to i + 1];
   int loss_color = 0xf16161;
-  int profit_color = 0xf16161;
+  int profit_color = 0x32cd32;
   for (int i = 0 ; i < no_of_prices - 1; i++){
     int x_pos_start = (int) (i    ) * stretch_ratio_price + padding_X;
     int x_pos_end   = (int) (i + 1) * stretch_ratio_price + padding_X;
     int y_pos_start = (int) (price_output[i]     - min_payoff) * stretch_ratio_payoff + padding_Y;
     int y_pos_end   = (int) (price_output[i + 1] - min_payoff) * stretch_ratio_payoff + padding_Y;
-    if( price_output[i] > 0)
+    if( price_output[i + 1] > 0){
       DrawLineWide(pixels, 10, x_pos_start, y_pos_start, x_pos_end, y_pos_end, profit_color );
-    else
+    } else{
       DrawLineWide(pixels, 10, x_pos_start, y_pos_start, x_pos_end, y_pos_end, loss_color );
 
+    }
   }
 
 }
@@ -291,62 +292,9 @@ int main(){
     }
   };
 
-  //Isn't worring about expiry dates
-  {
-    assert(trade_buffer_amt < Trade_buffer_size);
-    trades[trade_buffer_amt].event               = BUY;
-    trades[trade_buffer_amt].contract_type       = OPTION;
-    trades[trade_buffer_amt].money_exchange      = GetAmt::getAmt(10.00);
-    trades[trade_buffer_amt].option.type      = CALL;
-    trades[trade_buffer_amt].option.strike_price      = GetAmt::getAmt(100.00);
-    trade_buffer_amt ++;
-  }
-  {
-    assert(trade_buffer_amt < Trade_buffer_size);
-    trades[trade_buffer_amt].event               = SELL;
-    trades[trade_buffer_amt].contract_type       = STOCK;
-    trades[trade_buffer_amt].money_exchange      = GetAmt::getAmt(200.00);
-    trade_buffer_amt ++;
-  }
-  {
-    assert(trade_buffer_amt < Trade_buffer_size);
-    trades[trade_buffer_amt].event               = SELL;
-    trades[trade_buffer_amt].contract_type       = STOCK;
-    trades[trade_buffer_amt].money_exchange      = GetAmt::getAmt(200.00);
-    trade_buffer_amt ++;
-  }
-#if 0
-  {
-    assert(trade_buffer_amt < Trade_buffer_size);
-    trades[trade_buffer_amt].event               = BUY;
-    trades[trade_buffer_amt].contract_type       = OPTION;
-    trades[trade_buffer_amt].money_exchange      = GetAmt::getAmt(10.00);
-    trades[trade_buffer_amt].option.type         = CALL;
-    trades[trade_buffer_amt].option.strike_price = GetAmt::getAmt(100.00);
-    trade_buffer_amt ++;
-  }
-  {
-    assert(trade_buffer_amt < Trade_buffer_size);
-    trades[trade_buffer_amt].event               = SELL;
-    trades[trade_buffer_amt].contract_type       = OPTION;
-    trades[trade_buffer_amt].money_exchange      = GetAmt::getAmt(10.00);
-    trades[trade_buffer_amt].option.type         = CALL;
-    trades[trade_buffer_amt].option.strike_price = GetAmt::getAmt(100.00);
-    trade_buffer_amt ++;
-  }
-  {
-    assert(trade_buffer_amt < Trade_buffer_size);
-    trades[trade_buffer_amt].event               = SELL;
-    trades[trade_buffer_amt].contract_type       = OPTION;
-    trades[trade_buffer_amt].money_exchange      = GetAmt::getAmt(10.00);
-    trades[trade_buffer_amt].option.type         = CALL;
-    trades[trade_buffer_amt].option.strike_price = GetAmt::getAmt(200.00);
-    trade_buffer_amt ++;
-  }
-#endif
-// 10000 = 100.00
-#define STARTPRICE GetAmt::getAmt(100.00)
-#define ENDPRICE GetAmt::getAmt(300.00)
+#include "position.h"
+#define STARTPRICE GetAmt::getAmt(80.00)
+#define ENDPRICE GetAmt::getAmt(120.00)
 
   int output_prices[1 + ENDPRICE - STARTPRICE];
   int max_payoff;

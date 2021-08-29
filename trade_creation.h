@@ -25,10 +25,11 @@ static int option_amt = 0;
 enum TradeType{ BUY, SELL};
 enum ContractType{ OPTION, STOCK};
 
-#define Trade_buffer_size 10
+#define Trade_buffer_size 100
 struct Trade{
  TradeType    event;
  ContractType contract_type; 
+ size_t       quantity;
  unsigned int money_exchange; 
     // Will be the absolute value of the money exchange
     // When calculating value will be multiplied with 
@@ -120,6 +121,19 @@ void OptionRepr(char * dst, int size, Option* opt, int index){
   };
 }
 
+Trade CreateTrade(TradeType event, ContractType type, size_t quantity, unsigned int money_exchange, OptionType opt_type = UNINIT, unsigned int strike_price = 0){
+  Trade t;
+  t.event               = event;
+  t.contract_type       = type;
+  t.quantity            = quantity;
+  t.money_exchange      = money_exchange;
+  if(type == OPTION){
+    t.option.type         = opt_type;
+    t.option.strike_price = strike_price;
+  }
+  return t;
+}
+
 int TradeValue(Trade trade, unsigned int current_price){
   int payoff = 0;
   switch (trade.contract_type){
@@ -132,9 +146,9 @@ int TradeValue(Trade trade, unsigned int current_price){
     }break;
   };
 
-  if (trade.event == BUY) {payoff = payoff; payoff -= trade.money_exchange;}
-  if (trade.event == SELL) {payoff = -payoff; payoff += trade.money_exchange;}
-  return payoff;
+  if (trade.event == BUY)  { payoff =  payoff; payoff -= trade.money_exchange;}
+  if (trade.event == SELL) { payoff = -payoff; payoff += trade.money_exchange;}
+  return payoff*trade.quantity;
 }
 
 
@@ -146,8 +160,11 @@ void CalculateTradeValueInRange(Trade* trades, size_t no_of_trades, int start_pr
     int total_payoff = 0;
     for(int opt_idx = 0; opt_idx < no_of_trades; opt_idx++){
       int r = TradeValue(trades[opt_idx], price);
+
+      //printf("%.2f: %.2f \n", (double)price/100, (double)r/100);
       total_payoff += r;
     }
+
 
     if(total_payoff < *min_payoff) {
       *min_payoff = total_payoff;
