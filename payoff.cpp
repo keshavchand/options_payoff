@@ -178,7 +178,7 @@ int DrawOnScreen(HDC hdc, RenderRegion region , int screen_width, int screen_hei
   int height = bmi.bmiHeader.biHeight;
   uint* pixels = PIXELS;
 
-  printf("%d x %d\n", width , height);
+  //printf("%d x %d\n", width , height);
   return StretchDIBits(hdc, 
       0,0,
       screen_width, screen_height,
@@ -295,6 +295,48 @@ void STB_Font_render(RenderRegion region, int line_height, int x_offset, int y_o
   }
 }
 
+constexpr static int getAmt(float a){
+  return (int)100*a;
+}
+
+#define STARTPRICE getAmt(80.00)
+#define ENDPRICE getAmt(120.00)
+int output_prices[1 + ENDPRICE - STARTPRICE];
+static int iteration = 0;
+
+void Render(RenderRegion region,int startprice, int endprice, int curr_iter){
+#include "position.h"
+  //NOTE idk about allocating data rn
+  //maybe will do it later
+  //currently a global variable
+  //int* output_prices = (int *)_alloca(1 + endprice - startprice);
+  static int  max_payoff;
+  static int  max_payoff_price;
+  static int  min_payoff;
+  static int  min_payoff_price;
+
+
+  if ( curr_iter != iteration){
+  CalculateTradeValueInRange(trades, trade_buffer_amt, startprice, endprice, output_prices, &max_payoff, &max_payoff_price, &min_payoff, &min_payoff_price);
+  //iteration = curr_iter;
+  }
+  printf("%d %d", max_payoff, min_payoff);
+
+  //Rendering part
+  int color = 0x282828;
+  FillScreen(region, color);
+  RenderPayoff(region, max_payoff , endprice, min_payoff , startprice, output_prices, 100 , 100); //Main Part
+  //printf("%s\n", "Font rendering start");
+  STB_Font_render(region,200,0,0, "TRADE PAYOFF", "C:/Windows/Fonts/arial.ttf", 0xffeeff, color);
+#define REPR_SIZE 255
+  static char trade_repr[REPR_SIZE];
+  //printf("%d\n", option_amt);
+  for (int i = 0 ; i < trade_buffer_amt ; i++){
+    int line_size = 100;
+    TradeRepr((char *)trade_repr, REPR_SIZE, trades, i);
+    STB_Font_render(region,line_size,10,region.height - line_size*(i + 1), trade_repr, "C:/Windows/Fonts/arial.ttf", 0xffeeff, color);
+  }
+}
 
 int Running = 1;
 LRESULT WindowProc(HWND window_handle, UINT message, WPARAM wParam, LPARAM lParam){
@@ -311,6 +353,7 @@ LRESULT WindowProc(HWND window_handle, UINT message, WPARAM wParam, LPARAM lPara
        HDC hdc = BeginPaint(window_handle, &ps);
        {
          RECT rect;
+         Render(region, STARTPRICE, ENDPRICE, iteration);
          GetClientRect(window_handle, &rect);
          DrawOnScreen(hdc, region ,rect.right - rect.left, rect.bottom - rect.top);
        }
@@ -331,27 +374,6 @@ LRESULT WindowProc(HWND window_handle, UINT message, WPARAM wParam, LPARAM lPara
 }
 
 int main(){
-
-  struct GetAmt{
-    constexpr static int getAmt(float a){
-      return (int)100*a;
-    }
-  };
-
-
-#include "position.h"
-#define STARTPRICE GetAmt::getAmt(80.00)
-#define ENDPRICE GetAmt::getAmt(120.00)
-
-  int output_prices[1 + ENDPRICE - STARTPRICE];
-  int max_payoff;
-  int max_payoff_price;
-  int min_payoff;
-  int min_payoff_price;
-
-  CalculateTradeValueInRange(trades, trade_buffer_amt, STARTPRICE, ENDPRICE, output_prices, &max_payoff, &max_payoff_price, &min_payoff, &min_payoff_price);
-
-  printf("%d %d", max_payoff, min_payoff);
   char * window_class_name = "Option Payoff Chart";
   WNDCLASSA window_class = {0};
   window_class.style = CS_HREDRAW | CS_VREDRAW | CS_OWNDC;
@@ -359,7 +381,6 @@ int main(){
   window_class.hInstance = GetModuleHandle(0);
   window_class.hCursor = LoadCursor(GetModuleHandle(NULL), IDC_ARROW); 
   window_class.lpszClassName = window_class_name;
-
   HDC hdc;
 
   if(RegisterClass(&window_class)){
@@ -371,6 +392,8 @@ int main(){
            0, 0, GetModuleHandle(0), 0);
 
     if (window) {
+      Render(region, STARTPRICE, ENDPRICE, iteration++);
+
       hdc = GetDC(window);
       while (Running){
         MSG message;
@@ -380,20 +403,7 @@ int main(){
           DispatchMessage(&message);
           continue;
         }
-        int color = 0x282828;
-        FillScreen(region, color);
-        RenderPayoff(region, max_payoff , ENDPRICE, min_payoff , STARTPRICE, output_prices, 100 , 100); //Main Part
-        printf("%s\n", "Font rendering start");
-        STB_Font_render(region,200,0,0, "TRADE PAYOFF", "C:/Windows/Fonts/arial.ttf", 0xffeeff, color);
-#define REPR_SIZE 255
-        static char trade_repr[REPR_SIZE];
-        //printf("%d\n", option_amt);
-        for (int i = 0 ; i < trade_buffer_amt ; i++){
-          int line_size = 100;
-          TradeRepr((char *)trade_repr, REPR_SIZE, trades, i);
-          STB_Font_render(region,line_size,10,region.height - line_size*(i + 1), trade_repr, "C:/Windows/Fonts/arial.ttf", 0xffeeff, color);
-        }
-        printf("%s\n", "Font rendering end");
+        Render(region, STARTPRICE, ENDPRICE, iteration);
         RECT rect;
         GetClientRect(window, &rect);
         DrawOnScreen(hdc, region, rect.right - rect.left, rect.bottom - rect.top);
