@@ -3,20 +3,33 @@
 #define TRADE_CREATION_IMPLEMENTATION
 #include "trade_creation.h"
 
+typedef unsigned int uint
+
 #define WIDTH 3840
 #define HEIGHT 2160
-//#define WIDTH 1000
-//#define HEIGHT 800
+//#define WIDTH 100
+//#define HEIGHT 100
 // Pixels start at (0,0) at top and go to (Height, width) at lowest
 unsigned int PIXELS [WIDTH * HEIGHT];
 
-void FillScreen(unsigned int * pixels, int color){
-  for( int i = 0; i < WIDTH; i++){
-    for( int j = 0; j < HEIGHT; j++){
-      pixels[i * HEIGHT + j] = color;
+struct RenderRegion{
+  int    width;
+  int    height;
+  uint*  Pixels;
+}
+
+inline void DrawPixel(RenderRegion region, unsigned int x, unsigned int y, unsigned int color){
+  if ( y < 0 || y > region.height || x > region.width || x < 0) return;
+  region.pixels[y * WIDTH + x] = color;
+}
+
+inline void FillScreen(unsigned int * pixels, unsigned int color){
+  for( int y = 0; y < HEIGHT; y++){
+    for( int x = 0; x < WIDTH; x++){
+      DrawPixel(pixels, x, y, color);
+      //pixels[i * HEIGHT + j] = color;
     }
   }
-
 }
 
 void DrawLine(unsigned int *pixels, int point_x1, int point_y1, int point_x2, int point_y2, unsigned int foreground_color){
@@ -30,9 +43,7 @@ void DrawLine(unsigned int *pixels, int point_x1, int point_y1, int point_x2, in
 
     int point_y = point_y1;
     for(int x = point_x1 ; x <= point_x2 ; x++){
-      int idx = point_y * WIDTH + x;
-      if( idx < 0 || idx > WIDTH * HEIGHT) continue;
-      pixels[idx] = foreground_color;
+      DrawPixel(pixels, x, point_y, foreground_color);
     }
     return;
   }
@@ -46,9 +57,7 @@ void DrawLine(unsigned int *pixels, int point_x1, int point_y1, int point_x2, in
 
     int point_x = point_x1;
     for(int y = point_y1 ; y <= point_y2; y++){
-      int idx = y * WIDTH + point_x;
-      if( idx < 0 || idx > WIDTH * HEIGHT) continue;
-      pixels[idx] = foreground_color;
+      DrawPixel(pixels, point_x, y, foreground_color);
     }
     return;
   }
@@ -89,9 +98,7 @@ void DrawLine(unsigned int *pixels, int point_x1, int point_y1, int point_x2, in
       float x_pos = (float)x + 0.5f;
       float y_pos = (slope * x_pos) + y_intersect;
       int y = (int) (y_pos);
-      int idx = (y) * WIDTH + x;
-      if( idx < 0 || idx > WIDTH * HEIGHT) continue;
-      pixels[(y) * WIDTH + x] = foreground_color ;
+      DrawPixel(pixels, x, y, foreground_color);
     }
   }else{
     if (point_y1 > point_y2){
@@ -123,9 +130,7 @@ void DrawLine(unsigned int *pixels, int point_x1, int point_y1, int point_x2, in
       float y_pos = (float)y + 0.5;
       float x_pos = (slope_inverse * y_pos) - y_intersect;
       int x = (int) (x_pos);
-      int idx = (y) * WIDTH + x;
-      if( idx < 0 || idx > WIDTH * HEIGHT) continue;
-      pixels[(y) * WIDTH + x] = foreground_color ;
+      DrawPixel(pixels, x, y, foreground_color);
     }
 
   }
@@ -208,7 +213,25 @@ void RenderPayoff(unsigned int* pixels, int max_payoff,int max_payoff_price, int
 
 static stbtt_fontinfo Font;
 unsigned char Font_contents[0xfe000];
-void STB_Font_render(unsigned int* pixels, int line_height, int x_offset, int y_offset, char* text, char *font_filename, int foreground_color){
+void STB_Font_render(unsigned int* pixels, int line_height, int x_offset, int y_offset, char* text, char *font_filename, unsigned int foreground_color, unsigned int background_color){
+  struct RGBLerp{
+    static const inline int lerp(unsigned int a, unsigned int b, double t){
+      unsigned int red_from   = a & 0x00ff0000;
+      unsigned int red_to     = b & 0x00ff0000;
+
+      unsigned int green_from = a & 0x0000ff00;
+      unsigned int green_to   = b & 0x0000ff00;
+
+      unsigned int blue_from  = a & 0x000000ff;
+      unsigned int blue_to    = b & 0x000000ff;
+
+      unsigned int red   = red_from   + (red_to   - red_from)   * t;
+      unsigned int green = green_from + (green_to - green_from) * t;
+      unsigned int blue  = blue_from  + (blue_to  - blue_from)  * t;
+
+      return red|green|blue;
+    }
+  };
   if(!Font.userdata){
     OFSTRUCT file_open_buff;
     BY_HANDLE_FILE_INFORMATION file_info;
@@ -236,12 +259,12 @@ void STB_Font_render(unsigned int* pixels, int line_height, int x_offset, int y_
     for(int Y_pos = 0; Y_pos < height; Y_pos++){
       for(int X_pos = 0; X_pos < width; X_pos++){
         //int idx_y = (HEIGHT - 10 - Y_pos)* WIDTH;
-        int idx_y = ((height + y_offset)- Y_pos) * WIDTH;
+        int idx_y = ((height + y_offset)- Y_pos);
         int idx_x = (X_pos + x_offset + char_distance);
-        if(idx_x > WIDTH) break;
-        int idx = idx_y + idx_x;
-        if(idx < 0 || idx > HEIGHT*WIDTH) break;
-        if(bitmap[Y_pos * width + X_pos]) pixels[idx] = foreground_color;
+        int idx_bmp = Y_pos * width + X_pos;
+        //lerp the color between forward and background color
+        int color = RGBLerp::lerp(background_color, foreground_color , (double) bitmap[idx_bmp] / 255);
+        DrawPixel(pixels, idx_x, idx_y, color);
       }
     }
 
@@ -310,6 +333,7 @@ int main(){
   window_class.style = CS_HREDRAW | CS_VREDRAW | CS_OWNDC;
   window_class.lpfnWndProc = WindowProc;
   window_class.hInstance = GetModuleHandle(0);
+  window_class.hCursor = LoadCursor(GetModuleHandle(NULL), IDC_ARROW); 
   window_class.lpszClassName = window_class_name;
 
   HDC hdc;
@@ -333,17 +357,19 @@ int main(){
           continue;
         }
         int color = 0x282828;
-        FillScreen((unsigned int *) &PIXELS, color);
+        FillScreen(PIXELS, color);
         RenderPayoff(PIXELS, max_payoff , ENDPRICE, min_payoff , STARTPRICE, output_prices, 100 , 100); //Main Part
-        STB_Font_render(PIXELS,200,0,0, "TRADE PAYOFF", "C:/Windows/Fonts/arial.ttf", 0xffeeff);
+        printf("%s\n", "Font rendering start");
+        STB_Font_render(PIXELS,200,0,0, "TRADE PAYOFF", "C:/Windows/Fonts/arial.ttf", 0xffeeff, color);
 #define REPR_SIZE 255
         static char trade_repr[REPR_SIZE];
         //printf("%d\n", option_amt);
         for (int i = 0 ; i < trade_buffer_amt ; i++){
           int line_size = 100;
           TradeRepr((char *)trade_repr, REPR_SIZE, trades, i);
-          STB_Font_render(PIXELS,line_size,10,HEIGHT - line_size*(i + 1), trade_repr, "C:/Windows/Fonts/arial.ttf", 0xffeeff);
+          STB_Font_render(PIXELS,line_size,10,HEIGHT - line_size*(i + 1), trade_repr, "C:/Windows/Fonts/arial.ttf", 0xffeeff, color);
         }
+        printf("%s\n", "Font rendering end");
         RECT rect;
         GetClientRect(window, &rect);
         DrawOnScreen(hdc, rect.right - rect.left, rect.bottom - rect.top);
