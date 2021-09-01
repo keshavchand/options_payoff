@@ -3,6 +3,10 @@
 #define TRADE_CREATION_IMPLEMENTATION
 #include "trade_creation.h"
 
+#define STB_TRUETYPE_IMPLEMENTATION
+#include "./stb_truetype.h"
+
+
 typedef unsigned int uint;
 
 #define _WIDTH 3840
@@ -16,10 +20,12 @@ struct RenderRegion{
   int    width;
   int    height;
   uint*  pixels;
+  stbtt_fontinfo Font;
 } region {
   _WIDTH,
   _HEIGHT,
-  PIXELS  
+  PIXELS,
+  NULL
 };
 
 
@@ -29,7 +35,6 @@ inline void DrawPixel(RenderRegion region, unsigned int x, unsigned int y, unsig
 }
 
 inline void FillScreen(RenderRegion region, unsigned int color){
-  //printf("%d x %d\n", region.width, region.height);
   for( int y = 0; y < region.height; y++){
     for( int x = 0; x < region.width; x++){
       DrawPixel(region, x, y, color);
@@ -176,9 +181,8 @@ int DrawOnScreen(HDC hdc, RenderRegion region , int screen_width, int screen_hei
   BITMAPINFO bmi = CreateBitmap(region);
   int width = bmi.bmiHeader.biWidth;
   int height = bmi.bmiHeader.biHeight;
-  uint* pixels = PIXELS;
+  uint* pixels = region.pixels;
 
-  //printf("%d x %d\n", width , height);
   return StretchDIBits(hdc, 
       0,0,
       screen_width, screen_height,
@@ -226,13 +230,29 @@ void RenderPayoff(RenderRegion region, int max_payoff,int max_payoff_price, int 
   }
 
 }
-
-#define STB_TRUETYPE_IMPLEMENTATION
-#include "./stb_truetype.h"
-
-static stbtt_fontinfo Font;
+//static stbtt_fontinfo Font;
 unsigned char Font_contents[0xfe000];
-void STB_Font_render(RenderRegion region, int line_height, int x_offset, int y_offset, char* text, char *font_filename, unsigned int foreground_color, unsigned int background_color){
+
+stbtt_fontinfo STB_font_init(char *font_filename){
+  stbtt_fontinfo Font;
+    OFSTRUCT file_open_buff;
+    BY_HANDLE_FILE_INFORMATION file_info;
+    HANDLE TTF_File = CreateFileA(font_filename,GENERIC_READ,  FILE_SHARE_READ,NULL, OPEN_EXISTING, FILE_ATTRIBUTE_READONLY, NULL);
+    GetFileInformationByHandle(TTF_File, &file_info);
+    assert(file_info.nFileSizeHigh == 0);
+    unsigned long file_size = file_info.nFileSizeLow; 
+    assert(file_size < 0xfe000);
+
+    //Read entire file
+    unsigned long bytes_read = 0;
+    bool result = ReadFile(TTF_File, Font_contents, file_size,(DWORD *) &bytes_read, NULL);
+    assert(result);
+
+   stbtt_InitFont(&Font, Font_contents, stbtt_GetFontOffsetForIndex((const unsigned char*) &Font_contents,0));
+   return Font;
+}
+
+void STB_Font_render_left(RenderRegion region, int line_height, int x_offset, int y_offset, char* text, unsigned int foreground_color, unsigned int background_color){
   struct RGBLerp{
     static const inline int lerp(unsigned int a, unsigned int b, double t){
       unsigned int red_from   = a & 0x00ff0000;
@@ -251,22 +271,8 @@ void STB_Font_render(RenderRegion region, int line_height, int x_offset, int y_o
       return red|green|blue;
     }
   };
-  if(!Font.userdata){
-    OFSTRUCT file_open_buff;
-    BY_HANDLE_FILE_INFORMATION file_info;
-    HANDLE TTF_File = CreateFileA(font_filename,GENERIC_READ,  FILE_SHARE_READ,NULL, OPEN_EXISTING, FILE_ATTRIBUTE_READONLY, NULL);
-    GetFileInformationByHandle(TTF_File, &file_info);
-    assert(file_info.nFileSizeHigh == 0);
-    unsigned long file_size = file_info.nFileSizeLow; 
-    assert(file_size < 0xfe000);
 
-    //Read entire file
-    unsigned long bytes_read = 0;
-    bool result = ReadFile(TTF_File, Font_contents, file_size,(DWORD *) &bytes_read, NULL);
-    assert(result);
-
-   stbtt_InitFont(&Font, Font_contents, stbtt_GetFontOffsetForIndex((const unsigned char*) &Font_contents,0));
-  }
+  stbtt_fontinfo Font = region.Font;
  
   int char_distance = 0;
   float scale = stbtt_ScaleForPixelHeight(&Font, line_height);
@@ -304,7 +310,8 @@ constexpr static int getAmt(float a){
 int output_prices[1 + ENDPRICE - STARTPRICE];
 static int iteration = 0;
 
-void Render(RenderRegion region,int startprice, int endprice, int curr_iter){
+
+void Render(RenderRegion region, int startprice, int endprice, int curr_iter){
 #include "position.h"
   //NOTE idk about allocating data rn
   //maybe will do it later
@@ -315,26 +322,27 @@ void Render(RenderRegion region,int startprice, int endprice, int curr_iter){
   static int  min_payoff;
   static int  min_payoff_price;
 
+  stbtt_fontinfo Font = region.Font;
+
 
   if ( curr_iter != iteration){
   CalculateTradeValueInRange(trades, trade_buffer_amt, startprice, endprice, output_prices, &max_payoff, &max_payoff_price, &min_payoff, &min_payoff_price);
   //iteration = curr_iter;
   }
-  printf("%d %d", max_payoff, min_payoff);
 
   //Rendering part
   int color = 0x282828;
   FillScreen(region, color);
-  RenderPayoff(region, max_payoff , endprice, min_payoff , startprice, output_prices, 100 , 100); //Main Part
+  RenderPayoff(region, max_payoff, endprice, min_payoff, startprice, output_prices, 100 , 100); //Main Part
   //printf("%s\n", "Font rendering start");
-  STB_Font_render(region,200,0,0, "TRADE PAYOFF", "C:/Windows/Fonts/arial.ttf", 0xffeeff, color);
+  STB_Font_render_left(region,200,0,0, "TRADE PAYOFF", 0xffeeff, color);
 #define REPR_SIZE 255
   static char trade_repr[REPR_SIZE];
   //printf("%d\n", option_amt);
   for (int i = 0 ; i < trade_buffer_amt ; i++){
     int line_size = 100;
     TradeRepr((char *)trade_repr, REPR_SIZE, trades, i);
-    STB_Font_render(region,line_size,10,region.height - line_size*(i + 1), trade_repr, "C:/Windows/Fonts/arial.ttf", 0xffeeff, color);
+    STB_Font_render_left(region, line_size, 10, region.height - line_size*(i + 1), trade_repr, 0xffeeff, color);
   }
 }
 
@@ -382,6 +390,9 @@ int main(){
   window_class.hCursor = LoadCursor(GetModuleHandle(NULL), IDC_ARROW); 
   window_class.lpszClassName = window_class_name;
   HDC hdc;
+
+  //Font face
+  region.Font = STB_font_init("C:/Windows/Fonts/arial.ttf");
 
   if(RegisterClass(&window_class)){
     window = CreateWindowExA(0,
