@@ -3,36 +3,41 @@
 #define TRADE_CREATION_IMPLEMENTATION
 #include "trade_creation.h"
 
-typedef unsigned int uint
+typedef unsigned int uint;
 
-#define WIDTH 3840
-#define HEIGHT 2160
+#define _WIDTH 3840
+#define _HEIGHT 2160
 //#define WIDTH 100
 //#define HEIGHT 100
 // Pixels start at (0,0) at top and go to (Height, width) at lowest
-unsigned int PIXELS [WIDTH * HEIGHT];
+uint PIXELS [_WIDTH * _HEIGHT];
 
 struct RenderRegion{
   int    width;
   int    height;
-  uint*  Pixels;
-}
+  uint*  pixels;
+} region {
+  _WIDTH,
+  _HEIGHT,
+  PIXELS  
+};
+
 
 inline void DrawPixel(RenderRegion region, unsigned int x, unsigned int y, unsigned int color){
   if ( y < 0 || y > region.height || x > region.width || x < 0) return;
-  region.pixels[y * WIDTH + x] = color;
+  region.pixels[y * region.width + x] = color;
 }
 
-inline void FillScreen(unsigned int * pixels, unsigned int color){
-  for( int y = 0; y < HEIGHT; y++){
-    for( int x = 0; x < WIDTH; x++){
-      DrawPixel(pixels, x, y, color);
-      //pixels[i * HEIGHT + j] = color;
+inline void FillScreen(RenderRegion region, unsigned int color){
+  //printf("%d x %d\n", region.width, region.height);
+  for( int y = 0; y < region.height; y++){
+    for( int x = 0; x < region.width; x++){
+      DrawPixel(region, x, y, color);
     }
   }
 }
 
-void DrawLine(unsigned int *pixels, int point_x1, int point_y1, int point_x2, int point_y2, unsigned int foreground_color){
+void DrawLine(RenderRegion region, int point_x1, int point_y1, int point_x2, int point_y2, unsigned int foreground_color){
   if ( point_y1 == point_y2){
     //DrawStraightLineAlongX
     if ( point_x1 > point_x2){
@@ -43,7 +48,7 @@ void DrawLine(unsigned int *pixels, int point_x1, int point_y1, int point_x2, in
 
     int point_y = point_y1;
     for(int x = point_x1 ; x <= point_x2 ; x++){
-      DrawPixel(pixels, x, point_y, foreground_color);
+      DrawPixel(region, x, point_y, foreground_color);
     }
     return;
   }
@@ -57,7 +62,7 @@ void DrawLine(unsigned int *pixels, int point_x1, int point_y1, int point_x2, in
 
     int point_x = point_x1;
     for(int y = point_y1 ; y <= point_y2; y++){
-      DrawPixel(pixels, point_x, y, foreground_color);
+      DrawPixel(region, point_x, y, foreground_color);
     }
     return;
   }
@@ -98,7 +103,7 @@ void DrawLine(unsigned int *pixels, int point_x1, int point_y1, int point_x2, in
       float x_pos = (float)x + 0.5f;
       float y_pos = (slope * x_pos) + y_intersect;
       int y = (int) (y_pos);
-      DrawPixel(pixels, x, y, foreground_color);
+      DrawPixel(region, x, y, foreground_color);
     }
   }else{
     if (point_y1 > point_y2){
@@ -130,7 +135,7 @@ void DrawLine(unsigned int *pixels, int point_x1, int point_y1, int point_x2, in
       float y_pos = (float)y + 0.5;
       float x_pos = (slope_inverse * y_pos) - y_intersect;
       int x = (int) (x_pos);
-      DrawPixel(pixels, x, y, foreground_color);
+      DrawPixel(region, x, y, foreground_color);
     }
 
   }
@@ -138,55 +143,69 @@ void DrawLine(unsigned int *pixels, int point_x1, int point_y1, int point_x2, in
  return; 
 }
 
-void DrawLineWide(unsigned int* pixels, int width , int point_x1, int point_y1, int point_x2, int point_y2, unsigned int color){
+void DrawLineWide(RenderRegion region, int width , int point_x1, int point_y1, int point_x2, int point_y2, unsigned int color){
   int begin_x1 = point_x1 - (int)( width / 2);
   int begin_x2 = point_x2 - (int)( width / 2);
 
   for(int i = 0 ; i < width ; i++){
-    DrawLine(pixels, begin_x1 + i, point_y1, begin_x2 + i, point_y2, color);
+    DrawLine(region, begin_x1 + i, point_y1, begin_x2 + i, point_y2, color);
   }
   for(int i = 0 ; i < width ; i++){
-    DrawLine(pixels, begin_x1, point_y1 + i, begin_x2, point_y2 + i, color);
+    DrawLine(region, begin_x1, point_y1 + i, begin_x2, point_y2 + i, color);
   }
  
 }
 
-static BITMAPINFO bmi;
-HWND window;
-int DrawOnScreen(HDC hdc, int screen_width, int screen_height){
-  if(bmi.bmiHeader.biSize == 0){
+//static BITMAPINFO bmi;
+BITMAPINFO CreateBitmap(RenderRegion region){
+    BITMAPINFO bmi = {0};
     bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
-    bmi.bmiHeader.biWidth = WIDTH;
-    bmi.bmiHeader.biHeight = HEIGHT; // -ve for top down
+    bmi.bmiHeader.biWidth = region.width;
+    bmi.bmiHeader.biHeight = region.height; // -ve for top down
     bmi.bmiHeader.biPlanes = 1;
     bmi.bmiHeader.biBitCount = 32;
     bmi.bmiHeader.biCompression = BI_RGB;
-    bmi.bmiHeader.biSizeImage = HEIGHT * WIDTH;
-  }
+    bmi.bmiHeader.biSizeImage = region.width * region.height;
+
+    return bmi;
+}
+
+HWND window;
+int DrawOnScreen(HDC hdc, RenderRegion region , int screen_width, int screen_height){
   //SetStretchBltMode(hdc, COLORONCOLOR);
+  BITMAPINFO bmi = CreateBitmap(region);
+  int width = bmi.bmiHeader.biWidth;
+  int height = bmi.bmiHeader.biHeight;
+  uint* pixels = PIXELS;
+
+  printf("%d x %d\n", width , height);
   return StretchDIBits(hdc, 
       0,0,
       screen_width, screen_height,
       0,0,
-      WIDTH, HEIGHT,
-      PIXELS, &bmi,
+#if 0
+      width, height,
+#else
+      _WIDTH, _HEIGHT,
+#endif
+      pixels, &bmi,
       DIB_RGB_COLORS, SRCCOPY);
 }
 
-void RenderPayoff(unsigned int* pixels, int max_payoff,int max_payoff_price, int min_payoff,int min_payoff_price, int *price_output,  int padding_X = 0, int padding_Y = 0){
+void RenderPayoff(RenderRegion region, int max_payoff,int max_payoff_price, int min_payoff,int min_payoff_price, int *price_output,  int padding_X = 0, int padding_Y = 0){
 
   //For Width adjustment : X axis
   int shifted_max_price     = max_payoff_price - min_payoff_price;
   int price_range_len       = shifted_max_price; 
   //max_price * streth      = Width
-  float stretch_ratio_price = float(WIDTH - 2 * padding_X) / float(shifted_max_price);
+  float stretch_ratio_price = float(region.width - 2 * padding_X) / float(shifted_max_price);
 
   //For Height adjustment : Y axis
   int shifted_max_payoff    = max_payoff - min_payoff;
   shifted_max_payoff        += 2 * padding_Y;
   int payoff_range_len      = shifted_max_payoff; 
   //max_payoff * streth      = HEIGHT
-  float stretch_ratio_payoff = float(HEIGHT - 2 * padding_Y) / float(shifted_max_payoff);
+  float stretch_ratio_payoff = float(region.height - 2 * padding_Y) / float(shifted_max_payoff);
 
   int no_of_prices = max_payoff_price - min_payoff_price;
 
@@ -199,9 +218,9 @@ void RenderPayoff(unsigned int* pixels, int max_payoff,int max_payoff_price, int
     int y_pos_start = (int) (price_output[i]     - min_payoff) * stretch_ratio_payoff + padding_Y;
     int y_pos_end   = (int) (price_output[i + 1] - min_payoff) * stretch_ratio_payoff + padding_Y;
     if( price_output[i + 1] > 0){
-      DrawLineWide(pixels, 10, x_pos_start, y_pos_start, x_pos_end, y_pos_end, profit_color );
+      DrawLineWide(region, 10, x_pos_start, y_pos_start, x_pos_end, y_pos_end, profit_color );
     } else{
-      DrawLineWide(pixels, 10, x_pos_start, y_pos_start, x_pos_end, y_pos_end, loss_color );
+      DrawLineWide(region, 10, x_pos_start, y_pos_start, x_pos_end, y_pos_end, loss_color );
 
     }
   }
@@ -213,7 +232,7 @@ void RenderPayoff(unsigned int* pixels, int max_payoff,int max_payoff_price, int
 
 static stbtt_fontinfo Font;
 unsigned char Font_contents[0xfe000];
-void STB_Font_render(unsigned int* pixels, int line_height, int x_offset, int y_offset, char* text, char *font_filename, unsigned int foreground_color, unsigned int background_color){
+void STB_Font_render(RenderRegion region, int line_height, int x_offset, int y_offset, char* text, char *font_filename, unsigned int foreground_color, unsigned int background_color){
   struct RGBLerp{
     static const inline int lerp(unsigned int a, unsigned int b, double t){
       unsigned int red_from   = a & 0x00ff0000;
@@ -264,7 +283,7 @@ void STB_Font_render(unsigned int* pixels, int line_height, int x_offset, int y_
         int idx_bmp = Y_pos * width + X_pos;
         //lerp the color between forward and background color
         int color = RGBLerp::lerp(background_color, foreground_color , (double) bitmap[idx_bmp] / 255);
-        DrawPixel(pixels, idx_x, idx_y, color);
+        DrawPixel(region, idx_x, idx_y, color);
       }
     }
 
@@ -285,14 +304,18 @@ LRESULT WindowProc(HWND window_handle, UINT message, WPARAM wParam, LPARAM lPara
       Running = 0;
     } break;
     case WM_PAINT: {
+#if 0
+       return 1;
+#else
        PAINTSTRUCT ps;
        HDC hdc = BeginPaint(window_handle, &ps);
        {
          RECT rect;
          GetClientRect(window_handle, &rect);
-         DrawOnScreen(hdc, rect.right - rect.left, rect.bottom - rect.top);
+         DrawOnScreen(hdc, region ,rect.right - rect.left, rect.bottom - rect.top);
        }
        EndPaint(window_handle, &ps);
+#endif
     } break;
     case WM_KEYDOWN:{
       if ( wParam == 'Q'){
@@ -314,6 +337,7 @@ int main(){
       return (int)100*a;
     }
   };
+
 
 #include "position.h"
 #define STARTPRICE GetAmt::getAmt(80.00)
@@ -357,22 +381,22 @@ int main(){
           continue;
         }
         int color = 0x282828;
-        FillScreen(PIXELS, color);
-        RenderPayoff(PIXELS, max_payoff , ENDPRICE, min_payoff , STARTPRICE, output_prices, 100 , 100); //Main Part
+        FillScreen(region, color);
+        RenderPayoff(region, max_payoff , ENDPRICE, min_payoff , STARTPRICE, output_prices, 100 , 100); //Main Part
         printf("%s\n", "Font rendering start");
-        STB_Font_render(PIXELS,200,0,0, "TRADE PAYOFF", "C:/Windows/Fonts/arial.ttf", 0xffeeff, color);
+        STB_Font_render(region,200,0,0, "TRADE PAYOFF", "C:/Windows/Fonts/arial.ttf", 0xffeeff, color);
 #define REPR_SIZE 255
         static char trade_repr[REPR_SIZE];
         //printf("%d\n", option_amt);
         for (int i = 0 ; i < trade_buffer_amt ; i++){
           int line_size = 100;
           TradeRepr((char *)trade_repr, REPR_SIZE, trades, i);
-          STB_Font_render(PIXELS,line_size,10,HEIGHT - line_size*(i + 1), trade_repr, "C:/Windows/Fonts/arial.ttf", 0xffeeff, color);
+          STB_Font_render(region,line_size,10,region.height - line_size*(i + 1), trade_repr, "C:/Windows/Fonts/arial.ttf", 0xffeeff, color);
         }
         printf("%s\n", "Font rendering end");
         RECT rect;
         GetClientRect(window, &rect);
-        DrawOnScreen(hdc, rect.right - rect.left, rect.bottom - rect.top);
+        DrawOnScreen(hdc, region, rect.right - rect.left, rect.bottom - rect.top);
         ShowWindow(window, SW_SHOW);
       }
     }
