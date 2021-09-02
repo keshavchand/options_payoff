@@ -305,14 +305,28 @@ constexpr static int getAmt(float a){
   return (int)100*a;
 }
 
-#define STARTPRICE getAmt(80.00)
-#define ENDPRICE getAmt(120.00)
-int output_prices[1 + ENDPRICE - STARTPRICE];
-static int iteration = 0;
+//#define STARTPRICE getAmt(80.00)
+//#define ENDPRICE getAmt(120.00)
+
+static  int  startprice          =  0;
+static  int  endprice            =  0;
+static  int  *output_prices      =  0;
+static  int  output_prices_size  =  0;
+static  int  iteration           =  0;
+
+void RenderSetup(int size){
+  if (size > output_prices_size) {
+    size = (4*1024 > size) ? 4*1024 : size;
+    VirtualFree(output_prices, 0, MEM_RELEASE);
+    output_prices = (int*)VirtualAlloc(0, size * sizeof(int), MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    output_prices_size = size;
+  }
+}
 
 
 void Render(RenderRegion region, int startprice, int endprice, int curr_iter){
 #include "position.h"
+  RenderSetup(endprice - startprice);
   //NOTE idk about allocating data rn
   //maybe will do it later
   //currently a global variable
@@ -335,7 +349,11 @@ void Render(RenderRegion region, int startprice, int endprice, int curr_iter){
   FillScreen(region, color);
   RenderPayoff(region, max_payoff, endprice, min_payoff, startprice, output_prices, 100 , 100); //Main Part
   //printf("%s\n", "Font rendering start");
-  STB_Font_render_left(region,200,0,0, "TRADE PAYOFF", 0xffeeff, color);
+#define PRICE_OUTPUT_SIZE 35
+  char range[PRICE_OUTPUT_SIZE];
+  range[PRICE_OUTPUT_SIZE - 1] = 0;
+  snprintf(range, PRICE_OUTPUT_SIZE - 1, "(%d:%d) max@%d min@%d", startprice, endprice, max_payoff_price, min_payoff_price);
+  STB_Font_render_left(region,100,0,0, range, 0xffeeff, color);
 #define REPR_SIZE 255
   static char trade_repr[REPR_SIZE];
   //printf("%d\n", option_amt);
@@ -349,24 +367,69 @@ void Render(RenderRegion region, int startprice, int endprice, int curr_iter){
 int Running = 1;
 LRESULT WindowProc(HWND window_handle, UINT message, WPARAM wParam, LPARAM lParam){
   LRESULT result = 0;
+  static last_mouse_x;
+  static last_mouse_x;
   switch (message){
     case WM_CLOSE: {
       Running = 0;
     } break;
     case WM_PAINT: {
-#if 0
-       return 1;
-#else
        PAINTSTRUCT ps;
        HDC hdc = BeginPaint(window_handle, &ps);
        {
          RECT rect;
-         Render(region, STARTPRICE, ENDPRICE, iteration);
          GetClientRect(window_handle, &rect);
          DrawOnScreen(hdc, region ,rect.right - rect.left, rect.bottom - rect.top);
        }
        EndPaint(window_handle, &ps);
-#endif
+    } break;
+    case WM_LBUTTONDOWN:{
+      last_mouse_x = (lParam & 0x0000ffff) >> 0;
+      last_mouse_y = (lParam & 0xffff0000) >> 16;
+    } break; 
+    case WM_MOUSEMOVE: {
+      if(wParam & MK_LBUTTON){
+        int new_mouse_x = (lParam & 0x0000ffff) >> 0;
+        int new_mouse_y = (lParam & 0xffff0000) >> 16;
+
+        int diff_x = last_mouse_x;
+        printf("%d\n", diff_x);
+        last_mouse_x = new_mouse_x;
+        last_mouse_y = new_mouse_y;
+
+      }
+    } break;
+    case WM_MOUSEWHEEL:{
+
+      int zdiff = GET_WHEEL_DELTA_WPARAM(wParam);
+      zdiff /= 120;
+      float factor = 0.20; 
+      RECT rect;
+      GetWindowRect(window_handle, &rect);
+
+      int window_width = rect.right - rect.left;
+      
+      int mouse_x = (lParam & 0x0000ffff) >> 0;
+      mouse_x -= rect.left;
+      int price = startprice + (endprice - startprice)*((float)mouse_x / (float)window_width);
+      //Converge to price
+      if (zdiff > 0){
+        startprice += (price - startprice) * factor;
+        endprice -= (endprice - price) * factor;
+        printf("%.2f ; %.2f\n", (double)startprice / 100, (double)endprice / 100);
+      } else {
+        //Diverge from price
+        startprice -= (price - startprice) * factor;
+        endprice += (endprice - price) * factor;
+        printf("%.2f ; %.2f\n", (double)startprice / 100, (double)endprice / 100);
+      } 
+      Render(region, startprice, endprice, iteration++);
+      PostMessageA(window_handle, WM_PAINT, 0,0);
+
+      printf("zdiff : %i @ ( x: %lld , y: %lld)\n", 
+          GET_WHEEL_DELTA_WPARAM(wParam),
+          (lParam & 0x0000ffff) >> 0,
+          (lParam & 0xffff0000) >> 16);
     } break;
     case WM_KEYDOWN:{
       if ( wParam == 'Q'){
@@ -403,7 +466,9 @@ int main(){
            0, 0, GetModuleHandle(0), 0);
 
     if (window) {
-      Render(region, STARTPRICE, ENDPRICE, iteration++);
+      startprice = getAmt(80.00);
+      endprice = getAmt(120.00);
+      Render(region, startprice, endprice, iteration++);
 
       hdc = GetDC(window);
       while (Running){
@@ -414,7 +479,7 @@ int main(){
           DispatchMessage(&message);
           continue;
         }
-        Render(region, STARTPRICE, ENDPRICE, iteration);
+        Render(region, startprice, endprice, iteration);
         RECT rect;
         GetClientRect(window, &rect);
         DrawOnScreen(hdc, region, rect.right - rect.left, rect.bottom - rect.top);
