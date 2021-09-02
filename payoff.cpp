@@ -313,8 +313,10 @@ static  int  endprice            =  0;
 static  int  *output_prices      =  0;
 static  int  output_prices_size  =  0;
 static  int  iteration           =  0;
+static  int  line_size           =  0;
 
 void RenderSetup(int size){
+  if (!line_size) line_size = 100;
   if (size > output_prices_size) {
     size = (4*1024 > size) ? 4*1024 : size;
     VirtualFree(output_prices, 0, MEM_RELEASE);
@@ -338,37 +340,44 @@ void Render(RenderRegion region, int startprice, int endprice, int curr_iter){
 
   stbtt_fontinfo Font = region.Font;
 
-
   if ( curr_iter != iteration){
   CalculateTradeValueInRange(trades, trade_buffer_amt, startprice, endprice, output_prices, &max_payoff, &max_payoff_price, &min_payoff, &min_payoff_price);
   //iteration = curr_iter;
   }
 
   //Rendering part
-  int color = 0x282828;
-  FillScreen(region, color);
+  int bg_color = 0x282828;
+
+  FillScreen(region, bg_color);
+
+  //Print payoff graph
   RenderPayoff(region, max_payoff, endprice, min_payoff, startprice, output_prices, 100 , 100); //Main Part
-  //printf("%s\n", "Font rendering start");
+
+  //Print MIN MAX
 #define PRICE_OUTPUT_SIZE 35
   char range[PRICE_OUTPUT_SIZE];
   range[PRICE_OUTPUT_SIZE - 1] = 0;
   snprintf(range, PRICE_OUTPUT_SIZE - 1, "(%d:%d) max@%d min@%d", startprice, endprice, max_payoff_price, min_payoff_price);
-  STB_Font_render_left(region,100,0,0, range, 0xffeeff, color);
+  STB_Font_render_left(region,line_size,0,0, range, 0xffeeff, bg_color);
+  
+  //Print Trades
 #define REPR_SIZE 255
   static char trade_repr[REPR_SIZE];
   //printf("%d\n", option_amt);
   for (int i = 0 ; i < trade_buffer_amt ; i++){
-    int line_size = 100;
     TradeRepr((char *)trade_repr, REPR_SIZE, trades, i);
-    STB_Font_render_left(region, line_size, 10, region.height - line_size*(i + 1), trade_repr, 0xffeeff, color);
+    STB_Font_render_left(region, line_size, 10, region.height - line_size*(i + 1), trade_repr, 0xffeeff, bg_color);
   }
 }
 
-int Running = 1;
+int Running     = 1;
+int Deactivated = 1;
 LRESULT WindowProc(HWND window_handle, UINT message, WPARAM wParam, LPARAM lParam){
   LRESULT result = 0;
   static int last_mouse_x;
   static int last_mouse_y;
+
+  //printf("MSG: %x\n", message);
   switch (message){
     case WM_CLOSE: {
       Running = 0;
@@ -411,7 +420,7 @@ LRESULT WindowProc(HWND window_handle, UINT message, WPARAM wParam, LPARAM lPara
 
         startprice -= price_diff;
         endprice -= price_diff;
-        startprice = (startprice < 0)? startprice : 0;
+        startprice = (startprice < 0)? 0 : startprice;
   
         last_mouse_x = new_mouse_x;
         last_mouse_y = new_mouse_y;
@@ -428,32 +437,50 @@ LRESULT WindowProc(HWND window_handle, UINT message, WPARAM wParam, LPARAM lPara
       }
     } break;
     case WM_MOUSEWHEEL:{
-
       int zdiff = GET_WHEEL_DELTA_WPARAM(wParam);
       zdiff /= 120;
-      float factor = 0.20; 
+      if(wParam & MK_CONTROL){
+        line_size += zdiff;   
+        printf("%d\n", line_size);
+      }else{
+        float factor = 0.20; 
 
-      RECT rect;
-      GetWindowRect(window_handle, &rect);
-      int window_width = rect.right - rect.left;
-      int mouse_x = (lParam & 0x0000ffff) >> 0;
-      mouse_x -= rect.left;
+        RECT rect;
+        GetWindowRect(window_handle, &rect);
+        int window_width = rect.right - rect.left;
+        int mouse_x = (lParam & 0x0000ffff) >> 0;
+        mouse_x -= rect.left;
 
-      int price = startprice + (endprice - startprice)*((float)mouse_x / (float)window_width);
-      //Converge to price
-      if (zdiff > 0){
-        startprice += (price - startprice) * factor;
-        endprice -= (endprice - price) * factor;
-        startprice = (startprice < 0)? startprice : 0;
-        printf("%.2f ; %.2f\n", (double)startprice / 100, (double)endprice / 100);
-      } else {
-        //Diverge from price
-        startprice -= (price - startprice) * factor;
-        endprice += (endprice - price) * factor;
-        startprice = (startprice < 0)? startprice : 0;
-        printf("%.2f ; %.2f\n", (double)startprice / 100, (double)endprice / 100);
-      } 
-      Render(region, startprice, endprice, iteration++);
+        int price = startprice + (endprice - startprice)*((float)mouse_x / (float)window_width);
+        //Converge to price
+        if (zdiff > 0){
+          startprice += (price - startprice) * factor;
+          endprice -= (endprice - price) * factor;
+          startprice = (startprice < 0)? 0 : startprice;
+          printf("%.2f ; %.2f\n", (double)startprice / 100, (double)endprice / 100);
+        } else {
+          //Diverge from price
+          startprice -= (price - startprice) * factor;
+          endprice += (endprice - price) * factor;
+          startprice = (startprice < 0)? 0 : startprice;
+          printf("%.2f ; %.2f\n", (double)startprice / 100, (double)endprice / 100);
+        } 
+        Render(region, startprice, endprice, iteration++);
+      }
+        {
+          HDC hdc = GetDC(window_handle);
+          RECT rect;
+          GetClientRect(window_handle, &rect);
+          DrawOnScreen(hdc, region ,rect.right - rect.left, rect.bottom - rect.top);
+          ReleaseDC(window_handle, hdc);
+        }
+
+    } break;
+    case WM_MOUSEACTIVATE:
+    case WM_ACTIVATE:{
+      if (wParam == 1 || wParam == 2){ Deactivated = 0; }
+      else if(wParam == 0){ Deactivated = 1; }
+#if 0
       {
         HDC hdc = GetDC(window_handle);
         RECT rect;
@@ -461,16 +488,15 @@ LRESULT WindowProc(HWND window_handle, UINT message, WPARAM wParam, LPARAM lPara
         DrawOnScreen(hdc, region ,rect.right - rect.left, rect.bottom - rect.top);
         ReleaseDC(window_handle, hdc);
       }
-
-      printf("zdiff : %i @ ( x: %lld , y: %lld)\n", 
-          GET_WHEEL_DELTA_WPARAM(wParam),
-          (lParam & 0x0000ffff) >> 0,
-          (lParam & 0xffff0000) >> 16);
+#endif
+    } break; 
+    case WM_GETICON:{
     } break;
     case WM_KEYDOWN:{
       if ( wParam == 'Q'){
         Running = 0;
       }
+
     } break;
     default: {
       result = DefWindowProc(window_handle, message, wParam, lParam);
@@ -480,6 +506,17 @@ LRESULT WindowProc(HWND window_handle, UINT message, WPARAM wParam, LPARAM lPara
   return result;
 }
 
+DWORD WINAPI ThreadProc( LPVOID lpParameter){
+ HWND workingWindow = (HWND) lpParameter;
+ for(;;){
+    Sleep(1000);
+    BOOL isHung = IsHungAppWindow(workingWindow);
+    if (isHung) printf("WINDOW HUNG\n");
+    else printf("Working\n");
+
+    printf("Deactivated: %d\n", Deactivated);
+ }
+}
 
 int main(){
   char * window_class_name = "Option Payoff Chart";
@@ -487,7 +524,6 @@ int main(){
   window_class.style = CS_HREDRAW | CS_VREDRAW | CS_OWNDC;
   window_class.lpfnWndProc = WindowProc;
   window_class.hInstance = GetModuleHandle(0);
-  window_class.hCursor = LoadCursor(GetModuleHandle(NULL), IDC_ARROW); 
   window_class.lpszClassName = window_class_name;
   HDC hdc;
 
@@ -503,14 +539,19 @@ int main(){
            0, 0, GetModuleHandle(0), 0);
 
     if (window) {
+      CreateThread(NULL, 0, ThreadProc, (LPVOID*) window, 0, NULL);
       startprice = getAmt(80.00);
       endprice = getAmt(120.00);
       Render(region, startprice, endprice, iteration++);
 
       hdc = GetDC(window);
+      int pm_count = 0;
       while (Running){
         MSG message;
-        BOOL Ret = PeekMessage(&message, 0,0,0,1);
+        //System cant go idle when using peek message
+        BOOL Ret;
+        if (Deactivated) Ret = GetMessage(&message, 0, 0, 0);
+        else             Ret = PeekMessage(&message, 0,0,0,1);
         if ( Ret > 0){
           TranslateMessage(&message);
           DispatchMessage(&message);
