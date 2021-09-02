@@ -196,6 +196,8 @@ int DrawOnScreen(HDC hdc, RenderRegion region , int screen_width, int screen_hei
       DIB_RGB_COLORS, SRCCOPY);
 }
 
+static int loss_color = 0xf16161;
+static int profit_color = 0x32cd32;
 void RenderPayoff(RenderRegion region, int max_payoff,int max_payoff_price, int min_payoff,int min_payoff_price, int *price_output,  int padding_X = 0, int padding_Y = 0){
 
   //For Width adjustment : X axis
@@ -214,8 +216,6 @@ void RenderPayoff(RenderRegion region, int max_payoff,int max_payoff_price, int 
   int no_of_prices = max_payoff_price - min_payoff_price;
 
   //Iterate[0..no_of_prices - 1] and draw a line from[i to i + 1];
-  int loss_color = 0xf16161;
-  int profit_color = 0x32cd32;
   for (int i = 0 ; i < no_of_prices - 1; i++){
     int x_pos_start = (int) (i    ) * stretch_ratio_price + padding_X;
     int x_pos_end   = (int) (i + 1) * stretch_ratio_price + padding_X;
@@ -301,6 +301,94 @@ void STB_Font_render_left(RenderRegion region, int line_height, int x_offset, in
   }
 }
 
+#if 0
+
+void ErrorExit(LPTSTR lpszFunction) 
+{ 
+    // Retrieve the system error message for the last-error code
+
+    LPVOID lpMsgBuf;
+    LPVOID lpDisplayBuf;
+    DWORD dw = GetLastError(); 
+
+    FormatMessage(
+        FORMAT_MESSAGE_ALLOCATE_BUFFER | 
+        FORMAT_MESSAGE_FROM_SYSTEM |
+        FORMAT_MESSAGE_IGNORE_INSERTS,
+        NULL,
+        dw,
+        MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+        (LPTSTR) &lpMsgBuf,
+        0, NULL );
+
+    // Display the error message and exit the process
+
+    lpDisplayBuf = (LPVOID)LocalAlloc(LMEM_ZEROINIT, 
+        (lstrlen((LPCTSTR)lpMsgBuf) + lstrlen((LPCTSTR)lpszFunction) + 40) * sizeof(TCHAR)); 
+    snprintf((LPTSTR)lpDisplayBuf, 
+        LocalSize(lpDisplayBuf) / sizeof(TCHAR),
+        TEXT("%s failed with error %d: %s"), 
+        lpszFunction, dw, lpMsgBuf); 
+    MessageBox(NULL, (LPCTSTR)lpDisplayBuf, TEXT("Error"), MB_OK); 
+
+    LocalFree(lpMsgBuf);
+    LocalFree(lpDisplayBuf);
+    ExitProcess(dw); 
+}
+
+#endif 
+//Load Trades hot reload
+typedef void (* InitSampleTrades)(Trade *trades, int* trade_buffer_amt, int trade_buffer_size);
+static struct TradePositionFileHotLoading{
+  HMODULE          library;
+  FILETIME         last_file_time;
+  InitSampleTrades init_sample_trades;
+} trade_file_hotloading;
+
+static bool isNew(FILETIME maybe_new, FILETIME old){
+  if ( maybe_new.dwHighDateTime > old.dwHighDateTime) return true;
+  else if (maybe_new.dwHighDateTime == old.dwHighDateTime) {
+    if(maybe_new.dwLowDateTime > old.dwLowDateTime){
+      return true;
+    }
+  }
+  return false;
+}
+
+bool LoadTrades(char* filename){
+  //Get last write time
+  bool new_trades = false;
+  FILETIME last_time = trade_file_hotloading.last_file_time;
+  HANDLE file = CreateFileA( filename, GENERIC_READ , FILE_SHARE_WRITE, NULL, 
+      OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+  FILETIME new_file_time;
+  GetFileTime(file, NULL, NULL, &new_file_time);
+  CloseHandle(file);
+
+  //If changed then load again
+  if(isNew(new_file_time, last_time)) {
+    new_trades = true;
+    printf("NEW TRADES\n");
+    if(trade_file_hotloading.library) FreeLibrary(trade_file_hotloading.library);
+
+    //Cant overide file on windows
+    DeleteFile("new_required.dll");
+    CopyFile(filename, "new_required.dll", 1);
+
+    trade_file_hotloading.last_file_time = new_file_time;
+
+    trade_file_hotloading.library = LoadLibraryA("new_required.dll");
+    if(trade_file_hotloading.library == NULL){
+      //ErrorExit("LoadLibrary");
+    }
+    trade_file_hotloading.init_sample_trades = 
+     (InitSampleTrades) GetProcAddress(trade_file_hotloading.library , "InitSampleTrades"); 
+  }
+
+  return new_trades;
+}
+//End load trades
+
 constexpr static int getAmt(float a){
   return (int)100*a;
 }
@@ -326,9 +414,11 @@ void RenderSetup(int size){
 }
 
 
-void Render(RenderRegion region, int startprice, int endprice, int curr_iter){
-#include "position.h"
+bool Render(RenderRegion region, int startprice, int endprice, int curr_iter){
   RenderSetup(endprice - startprice);
+  bool are_new_trades = LoadTrades("position.dll");
+  trade_file_hotloading.init_sample_trades(trades, &trade_buffer_amt, Trade_buffer_size);
+
   //NOTE idk about allocating data rn
   //maybe will do it later
   //currently a global variable
@@ -361,17 +451,21 @@ void Render(RenderRegion region, int startprice, int endprice, int curr_iter){
   STB_Font_render_left(region,line_size,0,0, range, 0xffeeff, bg_color);
   
   //Print Trades
+  //if loss then loss color 
+  //if profit then profit color
 #define REPR_SIZE 255
   static char trade_repr[REPR_SIZE];
-  //printf("%d\n", option_amt);
   for (int i = 0 ; i < trade_buffer_amt ; i++){
     TradeRepr((char *)trade_repr, REPR_SIZE, trades, i);
     STB_Font_render_left(region, line_size, 10, region.height - line_size*(i + 1), trade_repr, 0xffeeff, bg_color);
   }
+
+  return are_new_trades;
+
 }
 
 int Running     = 1;
-int Deactivated = 1;
+int Deactivated = 0;
 LRESULT WindowProc(HWND window_handle, UINT message, WPARAM wParam, LPARAM lParam){
   LRESULT result = 0;
   static int last_mouse_x;
@@ -397,7 +491,7 @@ LRESULT WindowProc(HWND window_handle, UINT message, WPARAM wParam, LPARAM lPara
       last_mouse_y = (lParam & 0xffff0000) >> 16;
     } break; 
     case WM_MOUSEMOVE: {
-      if(wParam & MK_LBUTTON){
+      if(wParam & (MK_LBUTTON | MK_CONTROL)){
         int new_mouse_x = (lParam & 0x0000ffff) >> 0;
         int new_mouse_y = (lParam & 0xffff0000) >> 16;
 
@@ -441,7 +535,7 @@ LRESULT WindowProc(HWND window_handle, UINT message, WPARAM wParam, LPARAM lPara
       zdiff /= 120;
       if(wParam & MK_CONTROL){
         line_size += zdiff;   
-        printf("%d\n", line_size);
+        //printf("%d\n", line_size);
       }else{
         float factor = 0.20; 
 
@@ -457,13 +551,13 @@ LRESULT WindowProc(HWND window_handle, UINT message, WPARAM wParam, LPARAM lPara
           startprice += (price - startprice) * factor;
           endprice -= (endprice - price) * factor;
           startprice = (startprice < 0)? 0 : startprice;
-          printf("%.2f ; %.2f\n", (double)startprice / 100, (double)endprice / 100);
+          //printf("%.2f ; %.2f\n", (double)startprice / 100, (double)endprice / 100);
         } else {
           //Diverge from price
           startprice -= (price - startprice) * factor;
           endprice += (endprice - price) * factor;
           startprice = (startprice < 0)? 0 : startprice;
-          printf("%.2f ; %.2f\n", (double)startprice / 100, (double)endprice / 100);
+          //printf("%.2f ; %.2f\n", (double)startprice / 100, (double)endprice / 100);
         } 
         Render(region, startprice, endprice, iteration++);
       }
@@ -478,8 +572,8 @@ LRESULT WindowProc(HWND window_handle, UINT message, WPARAM wParam, LPARAM lPara
     } break;
     case WM_MOUSEACTIVATE:
     case WM_ACTIVATE:{
-      if (wParam == 1 || wParam == 2){ Deactivated = 0; }
-      else if(wParam == 0){ Deactivated = 1; }
+      if (wParam){ Deactivated = 0; }
+      else if(!wParam){ Deactivated = 1; }
 #if 0
       {
         HDC hdc = GetDC(window_handle);
@@ -510,11 +604,13 @@ DWORD WINAPI ThreadProc( LPVOID lpParameter){
  HWND workingWindow = (HWND) lpParameter;
  for(;;){
     Sleep(1000);
+#if 0
     BOOL isHung = IsHungAppWindow(workingWindow);
     if (isHung) printf("WINDOW HUNG\n");
     else printf("Working\n");
 
     printf("Deactivated: %d\n", Deactivated);
+#endif
  }
 }
 
@@ -546,12 +642,18 @@ int main(){
 
       hdc = GetDC(window);
       int pm_count = 0;
+      SetTimer(window, NULL, 100, 0);
       while (Running){
         MSG message;
         //System cant go idle when using peek message
         BOOL Ret;
+#if 0
         if (Deactivated) Ret = GetMessage(&message, 0, 0, 0);
         else             Ret = PeekMessage(&message, 0,0,0,1);
+#else
+        Ret = PeekMessage(&message, 0,0,0,1);
+        pm_count ++;
+#endif
         if ( Ret > 0){
           TranslateMessage(&message);
           DispatchMessage(&message);
