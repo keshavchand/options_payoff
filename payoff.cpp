@@ -367,8 +367,8 @@ void Render(RenderRegion region, int startprice, int endprice, int curr_iter){
 int Running = 1;
 LRESULT WindowProc(HWND window_handle, UINT message, WPARAM wParam, LPARAM lParam){
   LRESULT result = 0;
-  static last_mouse_x;
-  static last_mouse_x;
+  static int last_mouse_x;
+  static int last_mouse_y;
   switch (message){
     case WM_CLOSE: {
       Running = 0;
@@ -392,11 +392,39 @@ LRESULT WindowProc(HWND window_handle, UINT message, WPARAM wParam, LPARAM lPara
         int new_mouse_x = (lParam & 0x0000ffff) >> 0;
         int new_mouse_y = (lParam & 0xffff0000) >> 16;
 
-        int diff_x = last_mouse_x;
-        printf("%d\n", diff_x);
+        RECT rect;
+        GetWindowRect(window_handle, &rect);
+        int window_width = rect.right - rect.left;
+        int mouse_x = (lParam & 0x0000ffff) >> 0;
+        float last_mouse_x_adj = (float)last_mouse_x;
+
+        mouse_x -= rect.left;
+        float mouse_x_adj = (float)mouse_x / (float)window_width;
+        last_mouse_x_adj -= (float)rect.left;
+        last_mouse_x_adj /= window_width;
+
+        int price_under_last_mouse = startprice + last_mouse_x_adj*(endprice - startprice);
+        int price_under_new_mouse = startprice + mouse_x_adj*(endprice - startprice);
+
+        int price_diff = price_under_new_mouse - price_under_last_mouse;
+        //printf("%d\n", price_diff);
+
+        startprice -= price_diff;
+        endprice -= price_diff;
+        startprice = (startprice < 0)? startprice : 0;
+  
         last_mouse_x = new_mouse_x;
         last_mouse_y = new_mouse_y;
 
+        Render(region, startprice, endprice, iteration++);
+        {
+         HDC hdc = GetDC(window_handle);
+         RECT rect;
+         GetClientRect(window_handle, &rect);
+         DrawOnScreen(hdc, region ,rect.right - rect.left, rect.bottom - rect.top);
+         ReleaseDC(window_handle, hdc);
+        }
+        //printf("%f\n", diff_sec);
       }
     } break;
     case WM_MOUSEWHEEL:{
@@ -404,27 +432,35 @@ LRESULT WindowProc(HWND window_handle, UINT message, WPARAM wParam, LPARAM lPara
       int zdiff = GET_WHEEL_DELTA_WPARAM(wParam);
       zdiff /= 120;
       float factor = 0.20; 
+
       RECT rect;
       GetWindowRect(window_handle, &rect);
-
       int window_width = rect.right - rect.left;
-      
       int mouse_x = (lParam & 0x0000ffff) >> 0;
       mouse_x -= rect.left;
+
       int price = startprice + (endprice - startprice)*((float)mouse_x / (float)window_width);
       //Converge to price
       if (zdiff > 0){
         startprice += (price - startprice) * factor;
         endprice -= (endprice - price) * factor;
+        startprice = (startprice < 0)? startprice : 0;
         printf("%.2f ; %.2f\n", (double)startprice / 100, (double)endprice / 100);
       } else {
         //Diverge from price
         startprice -= (price - startprice) * factor;
         endprice += (endprice - price) * factor;
+        startprice = (startprice < 0)? startprice : 0;
         printf("%.2f ; %.2f\n", (double)startprice / 100, (double)endprice / 100);
       } 
       Render(region, startprice, endprice, iteration++);
-      PostMessageA(window_handle, WM_PAINT, 0,0);
+      {
+        HDC hdc = GetDC(window_handle);
+        RECT rect;
+        GetClientRect(window_handle, &rect);
+        DrawOnScreen(hdc, region ,rect.right - rect.left, rect.bottom - rect.top);
+        ReleaseDC(window_handle, hdc);
+      }
 
       printf("zdiff : %i @ ( x: %lld , y: %lld)\n", 
           GET_WHEEL_DELTA_WPARAM(wParam),
@@ -443,6 +479,7 @@ LRESULT WindowProc(HWND window_handle, UINT message, WPARAM wParam, LPARAM lPara
 
   return result;
 }
+
 
 int main(){
   char * window_class_name = "Option Payoff Chart";
@@ -487,4 +524,5 @@ int main(){
       }
     }
   }
+  return 0;
 }
