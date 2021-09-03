@@ -16,150 +16,10 @@ typedef unsigned int uint;
 // Pixels start at (0,0) at top and go to (Height, width) at lowest
 uint PIXELS [_WIDTH * _HEIGHT];
 
-struct RenderRegion{
-  int    width;
-  int    height;
-  uint*  pixels;
-  stbtt_fontinfo Font;
-} region {
-  _WIDTH,
-  _HEIGHT,
-  PIXELS,
-  NULL
+RenderRegion region = {
+  _WIDTH, _HEIGHT,
+  PIXELS, NULL
 };
-
-
-inline void DrawPixel(RenderRegion region, unsigned int x, unsigned int y, unsigned int color){
-  if ( y < 0 || y > region.height || x > region.width || x < 0) return;
-  region.pixels[y * region.width + x] = color;
-}
-
-inline void FillScreen(RenderRegion region, unsigned int color){
-  for( int y = 0; y < region.height; y++){
-    for( int x = 0; x < region.width; x++){
-      DrawPixel(region, x, y, color);
-    }
-  }
-}
-
-void DrawLine(RenderRegion region, int point_x1, int point_y1, int point_x2, int point_y2, unsigned int foreground_color){
-  if ( point_y1 == point_y2){
-    //DrawStraightLineAlongX
-    if ( point_x1 > point_x2){
-      int temp = point_x2;
-      point_x2 = point_x1;
-      point_x1 = temp;
-    }
-
-    int point_y = point_y1;
-    for(int x = point_x1 ; x <= point_x2 ; x++){
-      DrawPixel(region, x, point_y, foreground_color);
-    }
-    return;
-  }
-  if ( point_x1 == point_x2){
-    //DrawStraightLineAlongY
-    if ( point_y1 > point_y2){
-      int temp = point_y2;
-      point_y2 = point_y1;
-      point_y1 = temp;
-    }
-
-    int point_x = point_x1;
-    for(int y = point_y1 ; y <= point_y2; y++){
-      DrawPixel(region, point_x, y, foreground_color);
-    }
-    return;
-  }
-
-  int dx = point_x1 - point_x2;
-  if (dx < 0) dx *= -1;
-
-  int dy = point_y1 - point_y2;
-  if (dy < 0) dy *= -1;
-
-  //If we have more dx then we draw along x axis using y = mx + c
-  //else we draw along y axis using x = y/m - d where d = c/m
-  if( dx > dy){
-    if (point_x1 > point_x2){
-      int temp = point_x2;
-      point_x2 = point_x1;
-      point_x1 = temp;
-
-      temp = point_y2;
-      point_y2 = point_y1;
-      point_y1 = temp;
-    }
-
-    //y = Mx + c
-    //M = slope
-    //c = y intersect
-    float first_pixel_center_x = (float)point_x1 + 0.5f;
-    float first_pixel_center_y = (float)point_y1 + 0.5f;
-
-    float second_pixel_center_x = (float)point_x2 + 0.5f;
-    float second_pixel_center_y = (float)point_y2 + 0.5f;
-
-    float slope = 
-      (second_pixel_center_y - first_pixel_center_y)/(second_pixel_center_x - first_pixel_center_x);
-    float y_intersect = first_pixel_center_y - (slope * first_pixel_center_x);
-
-    for(int x = point_x1; x < point_x2; x++){
-      float x_pos = (float)x + 0.5f;
-      float y_pos = (slope * x_pos) + y_intersect;
-      int y = (int) (y_pos);
-      DrawPixel(region, x, y, foreground_color);
-    }
-  }else{
-    if (point_y1 > point_y2){
-      int temp = point_y2;
-      point_y2 = point_y1;
-      point_y1 = temp;
-
-      temp = point_x2;
-      point_x2 = point_x1;
-      point_x1 = temp;
-    }
-
-    //x = y*(1/m) - c*(1/m)
-    //M = slope
-    //c = y intersect
-    float first_pixel_center_x = (float)point_x1 + 0.5f;
-    float first_pixel_center_y = (float)point_y1 + 0.5f;
-
-    float second_pixel_center_x = (float)point_x2 + 0.5f;
-    float second_pixel_center_y = (float)point_y2 + 0.5f;
-
-    float slope_inverse = 
-      (second_pixel_center_x - first_pixel_center_x)/(second_pixel_center_y - first_pixel_center_y);
-    // c*(1/m)
-    //THINK: maybe rename is better
-    float y_intersect = first_pixel_center_y * slope_inverse - (first_pixel_center_x);
-
-    for(int y = point_y1; y < point_y2; y++){
-      float y_pos = (float)y + 0.5;
-      float x_pos = (slope_inverse * y_pos) - y_intersect;
-      int x = (int) (x_pos);
-      DrawPixel(region, x, y, foreground_color);
-    }
-
-  }
-  
- return; 
-}
-
-void DrawLineWide(RenderRegion region, int width , int point_x1, int point_y1, int point_x2, int point_y2, unsigned int color){
-  int begin_x1 = point_x1 - (int)( width / 2);
-  int begin_x2 = point_x2 - (int)( width / 2);
-
-  for(int i = 0 ; i < width ; i++){
-    DrawLine(region, begin_x1 + i, point_y1, begin_x2 + i, point_y2, color);
-  }
-  for(int i = 0 ; i < width ; i++){
-    DrawLine(region, begin_x1, point_y1 + i, begin_x2, point_y2 + i, color);
-  }
- 
-}
 
 //static BITMAPINFO bmi;
 BITMAPINFO CreateBitmap(RenderRegion region){
@@ -447,7 +307,7 @@ bool Render(RenderRegion region, int startprice, int endprice, int curr_iter){
 #define PRICE_OUTPUT_SIZE 35
   char range[PRICE_OUTPUT_SIZE];
   range[PRICE_OUTPUT_SIZE - 1] = 0;
-  snprintf(range, PRICE_OUTPUT_SIZE - 1, "(%d:%d) max@%d min@%d", startprice, endprice, max_payoff_price, min_payoff_price);
+  snprintf(range, PRICE_OUTPUT_SIZE - 1, "(%d:%d) MAX@%d MIN@%d", startprice, endprice, max_payoff_price, min_payoff_price);
   STB_Font_render_left(region,line_size,0,0, range, 0xffeeff, bg_color);
   
   //Print Trades
@@ -487,11 +347,13 @@ LRESULT WindowProc(HWND window_handle, UINT message, WPARAM wParam, LPARAM lPara
        EndPaint(window_handle, &ps);
     } break;
     case WM_LBUTTONDOWN:{
+      if(!(~wParam & (MK_LBUTTON | MK_CONTROL))){
       last_mouse_x = (lParam & 0x0000ffff) >> 0;
       last_mouse_y = (lParam & 0xffff0000) >> 16;
+      }
     } break; 
     case WM_MOUSEMOVE: {
-      if(wParam & (MK_LBUTTON | MK_CONTROL)){
+      if(!(~wParam & (MK_LBUTTON | MK_CONTROL))){
         int new_mouse_x = (lParam & 0x0000ffff) >> 0;
         int new_mouse_y = (lParam & 0xffff0000) >> 16;
 
@@ -648,15 +510,24 @@ int main(){
         //System cant go idle when using peek message
         BOOL Ret;
 #if 0
+        // We use GetMessage if Deactived
         if (Deactivated) Ret = GetMessage(&message, 0, 0, 0);
         else             Ret = PeekMessage(&message, 0,0,0,1);
 #else
+        //Else we rely on SetTimer
         Ret = PeekMessage(&message, 0,0,0,1);
         pm_count ++;
 #endif
         if ( Ret > 0){
+          HWND window_handle = window;
+          UINT msg = message.message;
+          WPARAM wParam = message.wParam; 
+          LPARAM lParam = message.lParam; 
+          WindowProc(window_handle, msg, wParam, lParam);
+#if 0
           TranslateMessage(&message);
           DispatchMessage(&message);
+#endif
           continue;
         }
         Render(region, startprice, endprice, iteration);
