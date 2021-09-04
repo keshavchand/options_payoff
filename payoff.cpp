@@ -1,24 +1,23 @@
 #include <windows.h>
 #include <stdio.h>
+#include <string.h>
 #define TRADE_CREATION_IMPLEMENTATION
 #include "trade_creation.h"
 
 #define STB_TRUETYPE_IMPLEMENTATION
 #include "./stb_truetype.h"
 
-
-typedef unsigned int uint;
+#include "render.cpp"
 
 #define _WIDTH 3840
 #define _HEIGHT 2160
 //#define WIDTH 100
 //#define HEIGHT 100
 // Pixels start at (0,0) at top and go to (Height, width) at lowest
-uint PIXELS [_WIDTH * _HEIGHT];
-
+uint PIXELS[_WIDTH * _HEIGHT];
 RenderRegion region = {
-  _WIDTH, _HEIGHT,
-  PIXELS, NULL
+ _WIDTH , _HEIGHT,
+ PIXELS, NULL
 };
 
 //static BITMAPINFO bmi;
@@ -47,7 +46,7 @@ int DrawOnScreen(HDC hdc, RenderRegion region , int screen_width, int screen_hei
       0,0,
       screen_width, screen_height,
       0,0,
-#if 0
+#if 1
       width, height,
 #else
       _WIDTH, _HEIGHT,
@@ -58,7 +57,7 @@ int DrawOnScreen(HDC hdc, RenderRegion region , int screen_width, int screen_hei
 
 static int loss_color = 0xf16161;
 static int profit_color = 0x32cd32;
-void RenderPayoff(RenderRegion region, int max_payoff,int max_payoff_price, int min_payoff,int min_payoff_price, int *price_output,  int padding_X = 0, int padding_Y = 0){
+void RenderPayoff(RenderRegion region, int max_payoff,int max_payoff_price, int min_payoff,int min_payoff_price, int *price_output,  int padding_X = 100, int padding_Y = 100){
 
   //For Width adjustment : X axis
   int shifted_max_price     = max_payoff_price - min_payoff_price;
@@ -90,113 +89,7 @@ void RenderPayoff(RenderRegion region, int max_payoff,int max_payoff_price, int 
   }
 
 }
-//static stbtt_fontinfo Font;
-unsigned char Font_contents[0xfe000];
 
-stbtt_fontinfo STB_font_init(char *font_filename){
-  stbtt_fontinfo Font;
-    OFSTRUCT file_open_buff;
-    BY_HANDLE_FILE_INFORMATION file_info;
-    HANDLE TTF_File = CreateFileA(font_filename,GENERIC_READ,  FILE_SHARE_READ,NULL, OPEN_EXISTING, FILE_ATTRIBUTE_READONLY, NULL);
-    GetFileInformationByHandle(TTF_File, &file_info);
-    assert(file_info.nFileSizeHigh == 0);
-    unsigned long file_size = file_info.nFileSizeLow; 
-    assert(file_size < 0xfe000);
-
-    //Read entire file
-    unsigned long bytes_read = 0;
-    bool result = ReadFile(TTF_File, Font_contents, file_size,(DWORD *) &bytes_read, NULL);
-    assert(result);
-
-   stbtt_InitFont(&Font, Font_contents, stbtt_GetFontOffsetForIndex((const unsigned char*) &Font_contents,0));
-   return Font;
-}
-
-void STB_Font_render_left(RenderRegion region, int line_height, int x_offset, int y_offset, char* text, unsigned int foreground_color, unsigned int background_color){
-  struct RGBLerp{
-    static const inline int lerp(unsigned int a, unsigned int b, double t){
-      unsigned int red_from   = a & 0x00ff0000;
-      unsigned int red_to     = b & 0x00ff0000;
-
-      unsigned int green_from = a & 0x0000ff00;
-      unsigned int green_to   = b & 0x0000ff00;
-
-      unsigned int blue_from  = a & 0x000000ff;
-      unsigned int blue_to    = b & 0x000000ff;
-
-      unsigned int red   = red_from   + (red_to   - red_from)   * t;
-      unsigned int green = green_from + (green_to - green_from) * t;
-      unsigned int blue  = blue_from  + (blue_to  - blue_from)  * t;
-
-      return red|green|blue;
-    }
-  };
-
-  stbtt_fontinfo Font = region.Font;
- 
-  int char_distance = 0;
-  float scale = stbtt_ScaleForPixelHeight(&Font, line_height);
-  for(int i = 0 ; text[i] != 0; i++){
-    int width, height;
-    int x_off;
-    unsigned char *bitmap = stbtt_GetCodepointBitmap(&Font, 0, scale, text[i], &width, &height, &x_off ,0);
-
-    for(int Y_pos = 0; Y_pos < height; Y_pos++){
-      for(int X_pos = 0; X_pos < width; X_pos++){
-        //int idx_y = (HEIGHT - 10 - Y_pos)* WIDTH;
-        int idx_y = ((height + y_offset)- Y_pos);
-        int idx_x = (X_pos + x_offset + char_distance);
-        int idx_bmp = Y_pos * width + X_pos;
-        //lerp the color between forward and background color
-        int color = RGBLerp::lerp(background_color, foreground_color , (double) bitmap[idx_bmp] / 255);
-        DrawPixel(region, idx_x, idx_y, color);
-      }
-    }
-
-    int advance_width, leftSideBearing;
-    stbtt_GetCodepointHMetrics(&Font, text[i], &advance_width, &leftSideBearing);
-    char_distance += (int)(advance_width * scale);
-    char_distance += (int)(stbtt_GetCodepointKernAdvance(&Font, text[i], text[i+1]) * scale);
-    stbtt_FreeBitmap(bitmap, 0);
-  }
-}
-
-#if 0
-
-void ErrorExit(LPTSTR lpszFunction) 
-{ 
-    // Retrieve the system error message for the last-error code
-
-    LPVOID lpMsgBuf;
-    LPVOID lpDisplayBuf;
-    DWORD dw = GetLastError(); 
-
-    FormatMessage(
-        FORMAT_MESSAGE_ALLOCATE_BUFFER | 
-        FORMAT_MESSAGE_FROM_SYSTEM |
-        FORMAT_MESSAGE_IGNORE_INSERTS,
-        NULL,
-        dw,
-        MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
-        (LPTSTR) &lpMsgBuf,
-        0, NULL );
-
-    // Display the error message and exit the process
-
-    lpDisplayBuf = (LPVOID)LocalAlloc(LMEM_ZEROINIT, 
-        (lstrlen((LPCTSTR)lpMsgBuf) + lstrlen((LPCTSTR)lpszFunction) + 40) * sizeof(TCHAR)); 
-    snprintf((LPTSTR)lpDisplayBuf, 
-        LocalSize(lpDisplayBuf) / sizeof(TCHAR),
-        TEXT("%s failed with error %d: %s"), 
-        lpszFunction, dw, lpMsgBuf); 
-    MessageBox(NULL, (LPCTSTR)lpDisplayBuf, TEXT("Error"), MB_OK); 
-
-    LocalFree(lpMsgBuf);
-    LocalFree(lpDisplayBuf);
-    ExitProcess(dw); 
-}
-
-#endif 
 //Load Trades hot reload
 typedef void (* InitSampleTrades)(Trade *trades, int* trade_buffer_amt, int trade_buffer_size);
 static struct TradePositionFileHotLoading{
@@ -238,9 +131,7 @@ bool LoadTrades(char* filename){
     trade_file_hotloading.last_file_time = new_file_time;
 
     trade_file_hotloading.library = LoadLibraryA("new_required.dll");
-    if(trade_file_hotloading.library == NULL){
-      //ErrorExit("LoadLibrary");
-    }
+    assert(trade_file_hotloading.library != NULL);
     trade_file_hotloading.init_sample_trades = 
      (InitSampleTrades) GetProcAddress(trade_file_hotloading.library , "InitSampleTrades"); 
   }
@@ -252,6 +143,9 @@ bool LoadTrades(char* filename){
 constexpr static int getAmt(float a){
   return (int)100*a;
 }
+constexpr static double getAmt(int a){
+  return (double)a/100;
+}
 
 //#define STARTPRICE getAmt(80.00)
 //#define ENDPRICE getAmt(120.00)
@@ -262,6 +156,18 @@ static  int  *output_prices      =  0;
 static  int  output_prices_size  =  0;
 static  int  iteration           =  0;
 static  int  line_size           =  0;
+static  int  screen_mouse_x      =  0;
+static  int  screen_mouse_y      =  0;
+static  int  screen_width        =  0;
+static  int  screen_height       =  0;
+static  int  padding_x           =  100;
+static  int  padding_y           =  100;
+
+
+long map(long x, long in_min, long in_max, long out_min, long out_max)
+{
+  return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
+}
 
 void RenderSetup(int size){
   if (!line_size) line_size = 100;
@@ -277,6 +183,7 @@ void RenderSetup(int size){
 bool Render(RenderRegion region, int startprice, int endprice, int curr_iter){
   RenderSetup(endprice - startprice);
   bool are_new_trades = LoadTrades("position.dll");
+  if (are_new_trades) iteration++;
   trade_file_hotloading.init_sample_trades(trades, &trade_buffer_amt, Trade_buffer_size);
 
   //NOTE idk about allocating data rn
@@ -297,19 +204,38 @@ bool Render(RenderRegion region, int startprice, int endprice, int curr_iter){
 
   //Rendering part
   int bg_color = 0x282828;
-
   FillScreen(region, bg_color);
 
+
   //Print payoff graph
-  RenderPayoff(region, max_payoff, endprice, min_payoff, startprice, output_prices, 100 , 100); //Main Part
+  RenderPayoff(region, max_payoff, endprice, min_payoff, startprice, output_prices, padding_x , padding_y); //Main Part
 
   //Print MIN MAX
-#define PRICE_OUTPUT_SIZE 35
+#define PRICE_OUTPUT_SIZE 40
   char range[PRICE_OUTPUT_SIZE];
   range[PRICE_OUTPUT_SIZE - 1] = 0;
-  snprintf(range, PRICE_OUTPUT_SIZE - 1, "(%d:%d) MAX@%d MIN@%d", startprice, endprice, max_payoff_price, min_payoff_price);
-  STB_Font_render_left(region,line_size,0,0, range, 0xffeeff, bg_color);
+  snprintf(range, PRICE_OUTPUT_SIZE - 1, "(%.2f:%.2f) MAX@%.2f MIN@%.2f", getAmt(startprice), getAmt(endprice), getAmt(max_payoff_price), getAmt(min_payoff_price));
+  STB_Font_render_left(region,line_size * 0.9 ,0,0, range, 0xffeeff, bg_color);
   
+  //GetPrice under cursor
+  //map current pixel count to screen
+  //find position of cursor on pixel wrt screen
+  //printf("%d of %d\n", screen_mouse_x, region.width - padding_x)
+  
+  int price_under_mouse = 0;
+  char price_under_mouse_str[25];
+  price_under_mouse_str[24] = 0;
+  //Note: incase the screen isnt created
+  if (screen_width){
+    int mouse_pixel_x = map(screen_mouse_x, 0, screen_width, 0, region.width);
+    if (!(mouse_pixel_x < padding_x || mouse_pixel_x > (region.width - padding_x)))
+    price_under_mouse = map(mouse_pixel_x, 0, region.width, startprice, endprice);
+    snprintf(price_under_mouse_str, 24, "%.02f", getAmt(price_under_mouse));
+  }
+
+  printf("%d \n", price_under_mouse);
+
+
   //Print Trades
   //if loss then loss color 
   //if profit then profit color
@@ -317,9 +243,19 @@ bool Render(RenderRegion region, int startprice, int endprice, int curr_iter){
   static char trade_repr[REPR_SIZE];
   for (int i = 0 ; i < trade_buffer_amt ; i++){
     TradeRepr((char *)trade_repr, REPR_SIZE, trades, i);
-    STB_Font_render_left(region, line_size, 10, region.height - line_size*(i + 1), trade_repr, 0xffeeff, bg_color);
+#if 1
+    int trade_payoff = TradeValue(trades[i], price_under_mouse);
+    if ( trade_payoff > 0)
+      STB_Font_render_left(region, line_size, 10, region.height - line_size*(i + 1), trade_repr, profit_color, bg_color);
+    else
+      STB_Font_render_left(region, line_size, 10, region.height - line_size*(i + 1), trade_repr, loss_color, bg_color);
+#else
+    STB_Font_render_left(region, line_size, 10, region.height - line_size*(i + 1), "HELLO WORLD", 0xffeeff, bg_color);
+#endif
   }
-
+  
+  if (price_under_mouse)
+    STB_Font_render_right(region, line_size, region.width, region.height - line_size, price_under_mouse_str, 0xffeeff, bg_color);
   return are_new_trades;
 
 }
@@ -342,6 +278,8 @@ LRESULT WindowProc(HWND window_handle, UINT message, WPARAM wParam, LPARAM lPara
        {
          RECT rect;
          GetClientRect(window_handle, &rect);
+         screen_width  = rect.right - rect.left;
+         screen_height = rect.bottom - rect.top;
          DrawOnScreen(hdc, region ,rect.right - rect.left, rect.bottom - rect.top);
        }
        EndPaint(window_handle, &ps);
@@ -353,6 +291,8 @@ LRESULT WindowProc(HWND window_handle, UINT message, WPARAM wParam, LPARAM lPara
       }
     } break; 
     case WM_MOUSEMOVE: {
+      // iff mouse left button is down
+      // and control key is pressed
       if(!(~wParam & (MK_LBUTTON | MK_CONTROL))){
         int new_mouse_x = (lParam & 0x0000ffff) >> 0;
         int new_mouse_y = (lParam & 0xffff0000) >> 16;
@@ -381,6 +321,7 @@ LRESULT WindowProc(HWND window_handle, UINT message, WPARAM wParam, LPARAM lPara
         last_mouse_x = new_mouse_x;
         last_mouse_y = new_mouse_y;
 
+#if 0
         Render(region, startprice, endprice, iteration++);
         {
          HDC hdc = GetDC(window_handle);
@@ -389,8 +330,22 @@ LRESULT WindowProc(HWND window_handle, UINT message, WPARAM wParam, LPARAM lPara
          DrawOnScreen(hdc, region ,rect.right - rect.left, rect.bottom - rect.top);
          ReleaseDC(window_handle, hdc);
         }
+#endif
         //printf("%f\n", diff_sec);
       }
+
+        screen_mouse_x = (lParam & 0x0000ffff) >> 0;
+        screen_mouse_y = (lParam & 0xffff0000) >> 16;
+        
+        Render(region, startprice, endprice, iteration++);
+        {
+         HDC hdc = GetDC(window_handle);
+         RECT rect;
+         GetClientRect(window_handle, &rect);
+         DrawOnScreen(hdc, region ,rect.right - rect.left, rect.bottom - rect.top);
+         ReleaseDC(window_handle, hdc);
+        }
+
     } break;
     case WM_MOUSEWHEEL:{
       int zdiff = GET_WHEEL_DELTA_WPARAM(wParam);
@@ -481,6 +436,7 @@ int main(){
   WNDCLASSA window_class = {0};
   window_class.style = CS_HREDRAW | CS_VREDRAW | CS_OWNDC;
   window_class.lpfnWndProc = WindowProc;
+  window_class.hCursor  = LoadCursor(0, IDC_ARROW);
   window_class.hInstance = GetModuleHandle(0);
   window_class.lpszClassName = window_class_name;
   HDC hdc;
@@ -498,8 +454,8 @@ int main(){
 
     if (window) {
       CreateThread(NULL, 0, ThreadProc, (LPVOID*) window, 0, NULL);
-      startprice = getAmt(80.00);
-      endprice = getAmt(120.00);
+      startprice = getAmt(80.00f);
+      endprice = getAmt(120.00f);
       Render(region, startprice, endprice, iteration++);
 
       hdc = GetDC(window);
