@@ -10,10 +10,10 @@ static int getAmt(float a){
  
 extern "C" __declspec(dllexport) void InitSampleTrades(Trade *trades, int* trade_buffer_amt, int trade_buffer_size){
   *trade_buffer_amt = 0;
-#if 0
+#if 1
   {
     assert(*trade_buffer_amt < trade_buffer_size);
-    trades[*trade_buffer_amt] = CreateTrade(BUY, OPTION, 2, getAmt(6.25), CALL, getAmt(95.00));
+    trades[*trade_buffer_amt] = CreateTrade(SELL, OPTION, 5, getAmt(6.25), PUT, getAmt(95.00));
     (*trade_buffer_amt) ++;
   }
   {

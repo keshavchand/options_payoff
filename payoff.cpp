@@ -1,6 +1,7 @@
 #include <windows.h>
 #include <stdio.h>
 #include <string.h>
+#include <dwmapi.h>
 #define TRADE_CREATION_IMPLEMENTATION
 #include "trade_creation.h"
 
@@ -8,6 +9,7 @@
 #include "./stb_truetype.h"
 
 #include "render.cpp"
+#include "slider.cpp"
 
 #define _WIDTH 3840
 #define _HEIGHT 2160
@@ -19,6 +21,17 @@ RenderRegion region = {
  _WIDTH , _HEIGHT,
  PIXELS, NULL
 };
+
+#define _SLIDER_WIDTH 200
+#define _SLIDER_HEIGHT 100
+uint SliderPixels[_SLIDER_WIDTH * _SLIDER_HEIGHT];
+// Looks like
+// ==||=======
+RenderRegion slider = {
+  _SLIDER_WIDTH, _SLIDER_HEIGHT,
+  SliderPixels, NULL
+};
+
 
 //static BITMAPINFO bmi;
 BITMAPINFO CreateBitmap(RenderRegion region){
@@ -150,18 +163,21 @@ constexpr static double getAmt(int a){
 //#define STARTPRICE getAmt(80.00)
 //#define ENDPRICE getAmt(120.00)
 
-static  int  startprice          =  0;
-static  int  endprice            =  0;
-static  int  *output_prices      =  0;
-static  int  output_prices_size  =  0;
-static  int  iteration           =  0;
-static  int  line_size           =  0;
-static  int  screen_mouse_x      =  0;
-static  int  screen_mouse_y      =  0;
-static  int  screen_width        =  0;
-static  int  screen_height       =  0;
-static  int  padding_x           =  100;
-static  int  padding_y           =  100;
+static  int    startprice              =  0;
+static  int    endprice                =  0;
+static  int    *output_prices          =  0;
+static  int    output_prices_size      =  0;
+static  int    iteration               =  0;
+static  int    line_size               =  0;
+static  int    screen_mouse_x          =  0;
+static  int    screen_mouse_y          =  0;
+static  int    clicked_screen_mouse_x  =  0;
+static  int    clicked_screen_mouse_y  =  0;
+static  int    screen_width            =  0;
+static  int    screen_height           =  0;
+static  int    padding_x               =  100;
+static  int    padding_y               =  100;
+static  float  slider_pos              =  0;
 
 
 long map(long x, long in_min, long in_max, long out_min, long out_max)
@@ -223,18 +239,21 @@ bool Render(RenderRegion region, int startprice, int endprice, int curr_iter){
   //printf("%d of %d\n", screen_mouse_x, region.width - padding_x)
   
   int price_under_mouse = 0;
+  int mouse_pixel_x = 0;
+  int mouse_pixel_y = 0;
   char price_under_mouse_str[25];
   price_under_mouse_str[24] = 0;
   //Note: incase the screen isnt created
   if (screen_width){
-    int mouse_pixel_x = map(screen_mouse_x, 0, screen_width, 0, region.width);
+    mouse_pixel_x = map(screen_mouse_x, 0, screen_width, 0, region.width);
+    mouse_pixel_y = map(screen_mouse_y, 0, screen_height, 0, region.height);
     if (!(mouse_pixel_x < padding_x || mouse_pixel_x > (region.width - padding_x)))
     price_under_mouse = map(mouse_pixel_x, 0, region.width, startprice, endprice);
     snprintf(price_under_mouse_str, 24, "%.02f", getAmt(price_under_mouse));
   }
 
-  printf("%d \n", price_under_mouse);
-
+  if (price_under_mouse)
+    STB_Font_render_right(region, line_size, region.width, region.height - line_size, price_under_mouse_str, 0xffeeff, bg_color);
 
   //Print Trades
   //if loss then loss color 
@@ -253,11 +272,38 @@ bool Render(RenderRegion region, int startprice, int endprice, int curr_iter){
     STB_Font_render_left(region, line_size, 10, region.height - line_size*(i + 1), "HELLO WORLD", 0xffeeff, bg_color);
 #endif
   }
-  
-  if (price_under_mouse)
-    STB_Font_render_right(region, line_size, region.width, region.height - line_size, price_under_mouse_str, 0xffeeff, bg_color);
+
+  { // SLIDER
+  // Slider to move highest price ( in case of exotic options)
+  int  slider_pos_x  =  region.width  -  slider.width        -  100;
+  int  slider_pos_y  =  0             ; //+  slider.height;     
+
+  int mouse_under_slider_region = 0;
+  { //Mouse under rectangle
+    if (screen_width && screen_height){
+    clicked_screen_mouse_x = map(clicked_screen_mouse_x, 0, screen_width , 0, region.width );
+    clicked_screen_mouse_y = map(clicked_screen_mouse_y, 0, screen_height, 0, region.height);
+    if ((clicked_screen_mouse_x > slider_pos_x) && (clicked_screen_mouse_x < slider_pos_x + slider.width)
+      &&(clicked_screen_mouse_y > slider_pos_y) && (clicked_screen_mouse_y < slider_pos_y + slider.height))
+       mouse_under_slider_region = 1;
+    }
+  }
+  double mouse_x_pct;
+  {//Find percentage where it is
+    if (mouse_under_slider_region){
+    mouse_x_pct = (double)(clicked_screen_mouse_x - slider_pos_x) / slider.width;
+    }
+  }
+
+  {//Draw Slider
+    FillScreen(slider, bg_color);
+    if (mouse_under_slider_region) slider_pos = mouse_x_pct;
+    DrawSlider(slider,slider_pos, 0,0);
+    MergeRenderRegion(region, slider, slider_pos_x, slider_pos_y);
+  }
   return are_new_trades;
 
+  }
 }
 
 int Running     = 1;
@@ -267,7 +313,6 @@ LRESULT WindowProc(HWND window_handle, UINT message, WPARAM wParam, LPARAM lPara
   static int last_mouse_x;
   static int last_mouse_y;
 
-  //printf("MSG: %x\n", message);
   switch (message){
     case WM_CLOSE: {
       Running = 0;
@@ -285,10 +330,15 @@ LRESULT WindowProc(HWND window_handle, UINT message, WPARAM wParam, LPARAM lPara
        EndPaint(window_handle, &ps);
     } break;
     case WM_LBUTTONDOWN:{
+      RECT rect;
+      GetClientRect(window_handle, &rect);
       if(!(~wParam & (MK_LBUTTON | MK_CONTROL))){
       last_mouse_x = (lParam & 0x0000ffff) >> 0;
       last_mouse_y = (lParam & 0xffff0000) >> 16;
       }
+      clicked_screen_mouse_x = (lParam & 0x0000ffff) >> 0;
+      clicked_screen_mouse_y = (rect.bottom - rect.top) - ((lParam & 0xffff0000) >> 16);
+      //printf("%d %d", clicked_screen_mouse_x, clicked_screen_mouse_y);
     } break; 
     case WM_MOUSEMOVE: {
       // iff mouse left button is down
@@ -321,31 +371,30 @@ LRESULT WindowProc(HWND window_handle, UINT message, WPARAM wParam, LPARAM lPara
         last_mouse_x = new_mouse_x;
         last_mouse_y = new_mouse_y;
 
-#if 0
-        Render(region, startprice, endprice, iteration++);
-        {
-         HDC hdc = GetDC(window_handle);
-         RECT rect;
-         GetClientRect(window_handle, &rect);
-         DrawOnScreen(hdc, region ,rect.right - rect.left, rect.bottom - rect.top);
-         ReleaseDC(window_handle, hdc);
-        }
-#endif
-        //printf("%f\n", diff_sec);
+      }
+      RECT rect;
+      GetClientRect(window_handle, &rect);
+      if (wParam & MK_LBUTTON){
+        clicked_screen_mouse_x = (lParam & 0x0000ffff) >> 0;
+        clicked_screen_mouse_y = (rect.bottom - rect.top) - ( (lParam & 0xffff0000) >> 16);
+        printf("%d %d", clicked_screen_mouse_x, clicked_screen_mouse_y);
+      }
+      screen_mouse_x = (lParam & 0x0000ffff) >> 0;
+      screen_mouse_y = (lParam & 0xffff0000) >> 16;
+
+      Render(region, startprice, endprice, iteration++);
+      {
+        HDC hdc = GetDC(window_handle);
+        DrawOnScreen(hdc, region ,rect.right - rect.left, rect.bottom - rect.top);
+        ReleaseDC(window_handle, hdc);
       }
 
-        screen_mouse_x = (lParam & 0x0000ffff) >> 0;
-        screen_mouse_y = (lParam & 0xffff0000) >> 16;
-        
-        Render(region, startprice, endprice, iteration++);
-        {
-         HDC hdc = GetDC(window_handle);
-         RECT rect;
-         GetClientRect(window_handle, &rect);
-         DrawOnScreen(hdc, region ,rect.right - rect.left, rect.bottom - rect.top);
-         ReleaseDC(window_handle, hdc);
-        }
-
+    } break;
+    case WM_LBUTTONUP : {
+#if 0
+      clicked_screen_mouse_x = 0;
+      clicked_screen_mouse_y = 0;
+#endif
     } break;
     case WM_MOUSEWHEEL:{
       int zdiff = GET_WHEEL_DELTA_WPARAM(wParam);
@@ -453,6 +502,12 @@ int main(){
            0, 0, GetModuleHandle(0), 0);
 
     if (window) {
+      DWM_BLURBEHIND blur;  
+      blur.dwFlags = 0x00000001;
+      blur.fEnable = 1;
+      blur.hRgnBlur = NULL;
+      blur.fTransitionOnMaximized = 1;
+      DwmEnableBlurBehindWindow(window, &blur);
       CreateThread(NULL, 0, ThreadProc, (LPVOID*) window, 0, NULL);
       startprice = getAmt(80.00f);
       endprice = getAmt(120.00f);

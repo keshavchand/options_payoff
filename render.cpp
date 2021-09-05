@@ -7,6 +7,7 @@ struct RenderRegion{
   stbtt_fontinfo Font;
 };
 
+
 inline void DrawPixel(RenderRegion region, unsigned int x, unsigned int y, unsigned int color){
   if ( y < 0 || y > region.height || x > region.width || x < 0) return;
   region.pixels[y * region.width + x] = color;
@@ -274,5 +275,19 @@ void STB_Font_render_right(RenderRegion region, int line_height, int x_offset, i
     char_distance += (int)((leftSideBearing + advance_width) * scale);
     char_distance += (int)(stbtt_GetCodepointKernAdvance(&Font, text[i - 1], text[i]) * scale);
     stbtt_FreeBitmap(bitmap, 0);
+  }
+}
+
+void MergeRenderRegion(RenderRegion dst, RenderRegion src, int from_x, int from_y) {
+  int dst_y = from_y;
+  int dst_x = from_x;
+  for(int src_y = 0; src_y < src.height; src_y++){
+    for(int src_x = 0; src_x < src.width; src_x++){
+      uint pixel = src.pixels[src_y * src.width + src_x];
+      DrawPixel(dst, dst_x, dst_y, pixel);
+      dst_x ++;
+    }
+    dst_y ++;
+    dst_x = from_x;
   }
 }
