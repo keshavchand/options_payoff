@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <dwmapi.h>
+
 #define TRADE_CREATION_IMPLEMENTATION
 #include "trade_creation.h"
 
@@ -22,7 +23,7 @@ RenderRegion region = {
  PIXELS, NULL
 };
 
-#define _SLIDER_WIDTH 200
+#define _SLIDER_WIDTH 400
 #define _SLIDER_HEIGHT 100
 uint SliderPixels[_SLIDER_WIDTH * _SLIDER_HEIGHT];
 // Looks like
@@ -134,7 +135,6 @@ bool LoadTrades(char* filename){
   //If changed then load again
   if(isNew(new_file_time, last_time)) {
     new_trades = true;
-    printf("NEW TRADES\n");
     if(trade_file_hotloading.library) FreeLibrary(trade_file_hotloading.library);
 
     //Cant overide file on windows
@@ -151,33 +151,28 @@ bool LoadTrades(char* filename){
 
   return new_trades;
 }
-//End load trades
-
-constexpr static int getAmt(float a){
-  return (int)100*a;
-}
-constexpr static double getAmt(int a){
-  return (double)a/100;
-}
 
 //#define STARTPRICE getAmt(80.00)
 //#define ENDPRICE getAmt(120.00)
 
-static  int    startprice              =  0;
-static  int    endprice                =  0;
-static  int    *output_prices          =  0;
-static  int    output_prices_size      =  0;
-static  int    iteration               =  0;
-static  int    line_size               =  0;
-static  int    screen_mouse_x          =  0;
-static  int    screen_mouse_y          =  0;
-static  int    clicked_screen_mouse_x  =  0;
-static  int    clicked_screen_mouse_y  =  0;
-static  int    screen_width            =  0;
-static  int    screen_height           =  0;
-static  int    padding_x               =  100;
-static  int    padding_y               =  100;
-static  float  slider_pos              =  0;
+static  int    startprice                             =  0;
+static  int    endprice                               =  0;
+static  int    *output_prices                         =  0;
+#if DISPLAY_OPTION_POSITION
+static  int    *output_prices_of_trades_under_cursor  =  0;
+#endif
+static  int    output_prices_size                     =  0;
+static  int    iteration                              =  0;
+static  int    line_size                              =  0;
+static  int    screen_mouse_x                         =  0;
+static  int    screen_mouse_y                         =  0;
+static  int    clicked_screen_mouse_x                 =  0;
+static  int    clicked_screen_mouse_y                 =  0;
+static  int    screen_width                           =  0;
+static  int    screen_height                          =  0;
+static  int    padding_x                              =  100;
+static  int    padding_y                              =  100;
+static  float  slider_pos                             =  0;
 
 
 long map(long x, long in_min, long in_max, long out_min, long out_max)
@@ -191,6 +186,10 @@ void RenderSetup(int size){
     size = (4*1024 > size) ? 4*1024 : size;
     VirtualFree(output_prices, 0, MEM_RELEASE);
     output_prices = (int*)VirtualAlloc(0, size * sizeof(int), MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+#if DISPLAY_OPTION_POSITION
+    VirtualFree(output_prices_of_trades_under_cursor, 0, MEM_RELEASE);
+    output_prices_of_trades_under_cursor = (int*)VirtualAlloc(0, size * sizeof(int), MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+#endif
     output_prices_size = size;
   }
 }
@@ -202,37 +201,6 @@ bool Render(RenderRegion region, int startprice, int endprice, int curr_iter){
   if (are_new_trades) iteration++;
   trade_file_hotloading.init_sample_trades(trades, &trade_buffer_amt, Trade_buffer_size);
 
-  //NOTE idk about allocating data rn
-  //maybe will do it later
-  //currently a global variable
-  //int* output_prices = (int *)_alloca(1 + endprice - startprice);
-  static int  max_payoff;
-  static int  max_payoff_price;
-  static int  min_payoff;
-  static int  min_payoff_price;
-
-  stbtt_fontinfo Font = region.Font;
-
-  if ( curr_iter != iteration){
-  CalculateTradeValueInRange(trades, trade_buffer_amt, startprice, endprice, output_prices, &max_payoff, &max_payoff_price, &min_payoff, &min_payoff_price);
-  //iteration = curr_iter;
-  }
-
-  //Rendering part
-  int bg_color = 0x282828;
-  FillScreen(region, bg_color);
-
-
-  //Print payoff graph
-  RenderPayoff(region, max_payoff, endprice, min_payoff, startprice, output_prices, padding_x , padding_y); //Main Part
-
-  //Print MIN MAX
-#define PRICE_OUTPUT_SIZE 40
-  char range[PRICE_OUTPUT_SIZE];
-  range[PRICE_OUTPUT_SIZE - 1] = 0;
-  snprintf(range, PRICE_OUTPUT_SIZE - 1, "(%.2f:%.2f) MAX@%.2f MIN@%.2f", getAmt(startprice), getAmt(endprice), getAmt(max_payoff_price), getAmt(min_payoff_price));
-  STB_Font_render_left(region,line_size * 0.9 ,0,0, range, 0xffeeff, bg_color);
-  
   //GetPrice under cursor
   //map current pixel count to screen
   //find position of cursor on pixel wrt screen
@@ -252,26 +220,115 @@ bool Render(RenderRegion region, int startprice, int endprice, int curr_iter){
     snprintf(price_under_mouse_str, 24, "%.02f", getAmt(price_under_mouse));
   }
 
-  if (price_under_mouse)
-    STB_Font_render_right(region, line_size, region.width, region.height - line_size, price_under_mouse_str, 0xffeeff, bg_color);
+  //NOTE idk about allocating data rn
+  //maybe will do it later
+  //currently a global variable
+  //int* output_prices = (int *)_alloca(1 + endprice - startprice);
+  static int  max_payoff;
+  static int  max_payoff_price;
+  static int  min_payoff;
+  static int  min_payoff_price;
+
+  int  under_mouse_trade_max_payoff;
+  int  under_mouse_trade_max_payoff_price;
+  int  under_mouse_trade_min_payoff;
+  int  under_mouse_trade_min_payoff_price;
+
+  int render_trades_under_mouse = 0;
+
+  stbtt_fontinfo Font = region.Font;
+
+  if ( curr_iter != iteration){
+  CalculateTradesValueInRange(trades, trade_buffer_amt, startprice, endprice, output_prices, &max_payoff, &max_payoff_price, &min_payoff, &min_payoff_price);
+  //iteration = curr_iter;
+  }
+
+  //Rendering part
+  int bg_color = 0x282828;
+  FillScreen(region, bg_color);
+
 
   //Print Trades
   //if loss then loss color 
   //if profit then profit color
-#define REPR_SIZE 255
+#define REPR_SIZE 300
   static char trade_repr[REPR_SIZE];
   for (int i = 0 ; i < trade_buffer_amt ; i++){
-    TradeRepr((char *)trade_repr, REPR_SIZE, trades, i);
+    int trade_payoff = TradeReprWithPayoff((char *)trade_repr, REPR_SIZE, trades[i], price_under_mouse);
+    int x_offset = 10;
+    int y_offset = region.height - line_size * (i + 1);
 #if 1
-    int trade_payoff = TradeValue(trades[i], price_under_mouse);
+    int width;
     if ( trade_payoff > 0)
-      STB_Font_render_left(region, line_size, 10, region.height - line_size*(i + 1), trade_repr, profit_color, bg_color);
+      width = STB_Font_render_left(region, line_size, x_offset, y_offset, trade_repr, profit_color, bg_color);
     else
-      STB_Font_render_left(region, line_size, 10, region.height - line_size*(i + 1), trade_repr, loss_color, bg_color);
+      width = STB_Font_render_left(region, line_size, x_offset, y_offset, trade_repr, loss_color, bg_color);
 #else
     STB_Font_render_left(region, line_size, 10, region.height - line_size*(i + 1), "HELLO WORLD", 0xffeeff, bg_color);
 #endif
+#if DISPLAY_OPTION_POSITION
+    // If mouse if over a specific trade then 
+    // display its payoff along with the old one
+    if (screen_width && screen_height){
+      int new_screen_mouse_x = map(screen_mouse_x, 0, screen_width , 0, region.width );
+      int new_screen_mouse_y = map(screen_mouse_y, 0, screen_height, 0, region.height);
+      //printf("%d %d\n", new_screen_mouse_x, new_screen_mouse_y);
+      if ((new_screen_mouse_x > x_offset) && (new_screen_mouse_x < x_offset + width)
+          &&(new_screen_mouse_y > line_size * i) && (new_screen_mouse_y < line_size * (i + 1))){
+        CalculateTradeValueInRange(trades[i], startprice, endprice, output_prices_of_trades_under_cursor,
+            &under_mouse_trade_max_payoff, &under_mouse_trade_max_payoff_price, &under_mouse_trade_min_payoff, &under_mouse_trade_min_payoff_price);
+         render_trades_under_mouse = 1;
+      }
+    }
+#endif
   }
+  
+  int printing_mix_payoff_price;
+  int printing_min_payoff;
+  int printing_max_payoff_price;
+  int printing_max_payoff;
+#if DISPLAY_OPTION_POSITION
+  if (render_trades_under_mouse){
+    if ( max_payoff > under_mouse_trade_max_payoff) {
+      printing_max_payoff = max_payoff;
+      printing_max_payoff_price = max_payoff_price;
+    }else{
+      printing_max_payoff = under_mouse_trade_max_payoff;
+      printing_max_payoff_price = under_mouse_trade_max_payoff_price;
+    } 
+  } else{ 
+    printing_mix_payoff_price = min_payoff_price;
+    printing_min_payoff = min_payoff;
+    printing_max_payoff_price = max_payoff_price;
+    printing_max_payoff = max_payoff;
+  }
+#else
+    printing_mix_payoff_price = min_payoff_price;
+    printing_min_payoff = min_payoff;
+    printing_max_payoff_price = max_payoff_price;
+    printing_max_payoff = max_payoff;
+
+#endif
+
+#if DISPLAY_OPTION_POSITION
+  //Print payoff graph
+  RenderPayoff(region, printing_max_payoff, endprice, printing_min_payoff, startprice, output_prices, padding_x , padding_y); //Main Part
+  if (render_trades_under_mouse)
+    RenderPayoff(region, printing_max_payoff, endprice, printing_min_payoff, startprice, output_prices_of_trades_under_cursor, padding_x , padding_y); //Main Part
+#else
+  RenderPayoff(region, printing_max_payoff, endprice, printing_min_payoff, startprice, output_prices, padding_x , padding_y); //Main Part
+#endif
+
+  //Print MIN MAX
+#define PRICE_OUTPUT_SIZE 40
+  char range[PRICE_OUTPUT_SIZE];
+  range[PRICE_OUTPUT_SIZE - 1] = 0;
+  snprintf(range, PRICE_OUTPUT_SIZE - 1, "(%.2f:%.2f) MAX@%.2f MIN@%.2f", getAmt(startprice), getAmt(endprice), getAmt(max_payoff_price), getAmt(min_payoff_price));
+  STB_Font_render_left(region,line_size * 0.9 ,0,0, range, 0xffeeff, bg_color);
+  
+  if (price_under_mouse)
+    STB_Font_render_right(region, line_size, region.width, region.height - line_size, price_under_mouse_str, 0xffeeff, bg_color);
+
 
   { // SLIDER
   // Slider to move highest price ( in case of exotic options)
@@ -338,7 +395,6 @@ LRESULT WindowProc(HWND window_handle, UINT message, WPARAM wParam, LPARAM lPara
       }
       clicked_screen_mouse_x = (lParam & 0x0000ffff) >> 0;
       clicked_screen_mouse_y = (rect.bottom - rect.top) - ((lParam & 0xffff0000) >> 16);
-      //printf("%d %d", clicked_screen_mouse_x, clicked_screen_mouse_y);
     } break; 
     case WM_MOUSEMOVE: {
       // iff mouse left button is down
@@ -362,7 +418,6 @@ LRESULT WindowProc(HWND window_handle, UINT message, WPARAM wParam, LPARAM lPara
         int price_under_new_mouse = startprice + mouse_x_adj*(endprice - startprice);
 
         int price_diff = price_under_new_mouse - price_under_last_mouse;
-        //printf("%d\n", price_diff);
 
         startprice -= price_diff;
         endprice -= price_diff;
@@ -481,6 +536,7 @@ DWORD WINAPI ThreadProc( LPVOID lpParameter){
 }
 
 int main(){
+  SetCurrentDirectory("W:/cpp/options_payoff/build");
   char * window_class_name = "Option Payoff Chart";
   WNDCLASSA window_class = {0};
   window_class.style = CS_HREDRAW | CS_VREDRAW | CS_OWNDC;

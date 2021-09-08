@@ -174,7 +174,8 @@ stbtt_fontinfo STB_font_init(char *font_filename){
 
 
 // WE SUPPORT ONLY CAPITAL LETTERS AND NUMBERS!!!!!!!!
-void STB_Font_render_left(RenderRegion region, int line_height, int x_offset, int y_offset, char* text, unsigned int foreground_color, unsigned int background_color){
+//return width
+int STB_Font_render_left(RenderRegion region, int line_height, int x_offset, int y_offset, char* text, unsigned int foreground_color, unsigned int background_color){
   struct RGBLerp{
     static const inline int lerp(unsigned int a, unsigned int b, double t){
       unsigned int red_from   = a & 0x00ff0000;
@@ -196,19 +197,23 @@ void STB_Font_render_left(RenderRegion region, int line_height, int x_offset, in
 
   stbtt_fontinfo Font = region.Font;
  
-  int char_distance = 0;
+  int char_distance_x = 0;
+  int char_distance_y = 0;
   float scale = stbtt_ScaleForPixelHeight(&Font, line_height);
   for(int i = 0 ; text[i] != 0; i++){
     int width, height;
     int x_off;
     int y_off;
     unsigned char *bitmap = stbtt_GetCodepointBitmap(&Font, 0, scale, text[i], &width, &height, &x_off ,&y_off);
-
+    int ascent, decent, lineGap;
+    stbtt_GetFontVMetrics(&Font ,&ascent, &decent, &lineGap);
+    char_distance_y = (char_distance_y > (ascent - decent + lineGap)) ? char_distance_y : ascent - decent + lineGap;
+    //height = ascent - decent + lineGap;
     for(int Y_pos = 0; Y_pos < height; Y_pos++){
       for(int X_pos = 0; X_pos < width; X_pos++){
         //int idx_y = (HEIGHT - 10 - Y_pos)* WIDTH;
         int idx_y = ((height + y_offset)- Y_pos);
-        int idx_x = (X_pos + x_offset + char_distance);
+        int idx_x = (X_pos + x_offset + char_distance_x);
         int idx_bmp = Y_pos * width + X_pos;
         //lerp the color between forward and background color
         int color = RGBLerp::lerp(background_color, foreground_color , (double) bitmap[idx_bmp] / 255);
@@ -218,10 +223,12 @@ void STB_Font_render_left(RenderRegion region, int line_height, int x_offset, in
 
     int advance_width, leftSideBearing;
     stbtt_GetCodepointHMetrics(&Font, text[i], &advance_width, &leftSideBearing);
-    char_distance += (int)((advance_width + leftSideBearing)* scale);
-    char_distance += (int)(stbtt_GetCodepointKernAdvance(&Font, text[i], text[i+1]) * scale);
+    char_distance_x += (int)((advance_width + leftSideBearing)* scale);
+    char_distance_x += (int)(stbtt_GetCodepointKernAdvance(&Font, text[i], text[i+1]) * scale);
     stbtt_FreeBitmap(bitmap, 0);
   }
+
+  return char_distance_x - x_offset;
 }
 
 
